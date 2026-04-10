@@ -4,6 +4,20 @@ description: "Bootstrap a new reef wiki from your codebase"
 
 # reef:init
 
+## MANDATORY — Read this first
+
+You MUST complete these interactions with the user IN ORDER. Do NOT skip any. Do NOT combine them into one message. Each requires a separate user response.
+
+1. **Print the welcome** (Step 0) — the ASCII art and orientation block. This is your FIRST output.
+2. **Ask the name** (Step 2) — "What should this reef be called?" STOP and wait.
+3. **Ask what it covers** (Step 3) — "Could you give a brief introduction of what this reef covers?" STOP and wait.
+4. **Ask location and sources** (Step 4) — "Where should the reef live? And where are the codebases?" STOP and wait.
+5. **Scan for repos** — Run `find <directory> -name .git -type d 2>/dev/null | sed 's|/.git||' | sort` — this is the ONLY correct way to find repos. Do NOT use ls, glob, or manual directory listing. Present results and ask user to confirm.
+
+Only after ALL five interactions are complete, proceed to automated steps (5-10).
+
+---
+
 ## Step 0 — Welcome
 
 **This must be your first output.** Before reading any other files, before doing anything else, print the following to the user:
@@ -80,15 +94,13 @@ Ask both together: "Where should the reef live? (default: new directory here) An
 
 Default location: new directory in cwd named after the reef. Default scan directory: current working directory. The user can override either.
 
-**Sources:** Once the user provides a scan directory, find all git repos recursively:
-
-Once the user provides a directory, scan it recursively for all git repos:
+**Sources:** Once the user provides a scan directory, you MUST use this exact command to find repos:
 
 ```bash
 find <directory> -name .git -type d 2>/dev/null | sed 's|/.git||' | sort
 ```
 
-This finds every git repo at any depth. Collect all results.
+Do NOT use ls, glob, or manually list directories. The find command is the ONLY reliable way to discover all git repos at any depth.
 
 Present what you find:
 
