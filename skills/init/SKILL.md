@@ -2,20 +2,18 @@
 description: "Bootstrap a new reef wiki from your codebase"
 ---
 
-# reef-init
+# reef:init
 
-Bootstrap a new reef — a structured knowledge wiki for one domain of source code.
-
-This skill walks the user through scoping, scaffolding, indexing, and configuring a new reef. The conversation should feel like a knowledgeable colleague helping you set up a knowledge base, not a wizard with numbered steps.
+Bootstrap a new reef and immediately start discovering knowledge. The user answers three questions (name, location, sources), then reef handles everything: scaffold, index, auto-generate discovery questions, and run a snorkel pass. By the end, the user has draft artifacts and a question bank without having to think about either upfront.
 
 ---
 
 ## Context Loading
 
-Before doing anything else, read these reference files:
+Read these reference files before starting:
 
-1. `/Users/jessi/Projects/seaof-ai/reef/references/artifact-contract.md` — you need the ID conventions and artifact types to guide the user's mental model during setup.
-2. `/Users/jessi/Projects/seaof-ai/reef/references/methodology.md` — voice, personality, and UX principles. Follow the Curious Researcher voice throughout this entire skill.
+1. `/Users/jessi/Projects/seaof-ai/reef/references/artifact-contract.md` — ID conventions and artifact types.
+2. `/Users/jessi/Projects/seaof-ai/reef/references/methodology.md` — voice and personality. Use the Curious Researcher voice throughout.
 
 ---
 
@@ -23,72 +21,54 @@ Before doing anything else, read these reference files:
 
 Look for a `.reef/` directory in the current working directory and in any path the user provides.
 
-- If `.reef/` exists: read `.reef/project.json` and report what you find — name, sources, creation date. Then ask: "This directory already has a reef. Do you want to continue building on it, or start fresh? Starting fresh will remove the existing `.reef/`, `artifacts/`, and `sources/` directories."
-- If the user wants to reset: delete the existing reef directories and proceed.
-- If the user wants to continue: suggest `/reef:update` or `/reef:scuba` instead, and exit this skill.
+- If `.reef/` exists: read `.reef/project.json` and report what you find. Ask: "This directory already has a reef. Continue building on it, or start fresh?"
+- If reset: delete the existing reef directories and proceed.
+- If continue: suggest `/reef:snorkel` or `/reef:scuba` instead and exit.
 - If no reef exists: proceed to Step 2.
 
 ---
 
-## Step 2 — Scope the reef
+## Step 2 — Three questions, then go
 
-Ask these questions one at a time. Wait for the user's answer before moving to the next question. Keep it conversational.
+Ask these one at a time. Keep it tight.
 
-**2a — Name**
+**Name:** "What should this reef be called?" — becomes the directory name (e.g., `my-reef`, `payments-reef`).
 
-Ask: "What should this reef be called?"
+**Location:** "Where should it live?" — default: new directory in cwd. User can specify any path.
 
-This becomes the directory name. Suggest a convention like `my-reef` or `payments-reef` — lowercase, hyphenated, ending in `-reef` is the convention but not required.
+**Sources:** "What codebases does it cover? Give me the paths."
 
-**2b — Location**
+Accept one or more paths. Verify each exists. Then:
+- Multiple sources: "Good — that is how Reef discovers cross-system contracts."
+- Single source: "You can add more later."
 
-Ask: "Where should it live?"
-
-Default: a new directory in the current working directory, named after the reef. The user can specify any absolute or relative path. Resolve the final path and confirm it with the user.
-
-**2c — Sources**
-
-Ask: "What codebases does it cover? Give me the paths to the source repos."
-
-Accept one or more paths (absolute or relative to cwd). For each path, verify it exists and contains files.
-
-After collecting sources, provide this guidance based on what the user gave:
-
-- If multiple sources: "Good — Reef works best when you include all services in a domain. That is how it discovers cross-system contracts."
-- If single source: "You can always add more sources later, or create separate reefs for other services and merge them with `/reef:merge`."
-- If the sources seem to span unrelated domains: "Think of this reef as one knowledge layer for one ecosystem. Services that don't talk to each other probably belong in separate reefs. Do these all belong together?"
-
-Store the resolved absolute paths for use in later steps.
+That is it for user input. Everything from here is automated.
 
 ---
 
-## Step 3 — Scaffold the directory structure
+## Step 3 — Scaffold
 
-Report: "Scaffolding the reef structure..."
+Report: "Scaffolding the reef..."
 
 Run:
 ```bash
 python3 /Users/jessi/Projects/seaof-ai/reef/scripts/reef.py init <resolved-reef-path>
 ```
 
-Parse the JSON output. Verify it reports success. If it fails, report the error and suggest how to fix it (usually a permissions issue or the directory already exists).
-
-After scaffolding, update `.reef/project.json` to include the source paths the user specified. The `sources` field should be an array of objects, each with `name` (directory basename) and `path` (resolved absolute path):
-
+Update `.reef/project.json` with the source paths:
 ```json
 {
   "sources": [
-    { "name": "service-a", "path": "/Users/someone/Projects/service-a" },
-    { "name": "service-b", "path": "/Users/someone/Projects/service-b" }
+    { "name": "service-a", "path": "/absolute/path/to/service-a" }
   ]
 }
 ```
 
-Read the scaffolded `project.json` first, then update it — do not overwrite other fields.
+Read the existing project.json first, then update — do not overwrite other fields.
 
 ---
 
-## Step 4 — Index source files
+## Step 4 — Index
 
 Report: "Indexing source files..."
 
@@ -97,86 +77,43 @@ Run:
 python3 /Users/jessi/Projects/seaof-ai/reef/scripts/reef.py index --reef <resolved-reef-path>
 ```
 
-Parse the JSON output. Report the results in natural language:
-- Number of files indexed per source
-- Number of files skipped (and why, if the output says)
-- Total files across all sources
-
-If indexing fails for a source path, report which path failed and continue with the others if possible.
+Report results: files indexed per source, total count. If a source fails, warn and continue.
 
 ---
 
-## Step 5 — Organizational context
+## Step 5 — Auto-generate discovery questions
 
-This step creates registry files that give Reef context code alone cannot provide. These are optional — if the user wants to skip, that is fine. Say so upfront.
+This is the critical step. After indexing, generate a tailored question bank for each source based on what the structural scan reveals. These questions steer snorkel and later become the `/reef:test` north star.
 
-Ask: "I can set up a couple of registry files that help Reef understand your org structure. These are optional but they make the output better. Want to do that now, or skip for later?"
+**How to generate questions:**
 
-If the user wants to proceed:
+1. Read `/Users/jessi/Projects/seaof-ai/reef/references/understanding-template.md` — the 33 baseline questions across 7 phases.
+2. For each source, do a quick structural scan:
+   - Read the 2-level directory tree
+   - Read README.md if present
+   - Identify entry points, routers, models, config, tests
+   - Note the tech stack
+3. Adapt the baseline questions to what you found. For each source, generate 8-15 specific questions. The questions should be:
+   - **Concrete, not generic.** Instead of "What are the core entities?", write "What are the core entities in service-a and how do Study, Case, and Image relate?" if you see those model names.
+   - **Answerable from code.** Every question should be something Claude can investigate by reading source files. Skip questions about ops/monitoring/team structure — those need human input and belong in scuba.
+   - **Ordered by discovery priority:** System boundaries first, then data model, then behavior, then cross-system contracts.
 
-**5a — Repo registry**
+4. For multi-source reefs, add cross-system questions:
+   - "What data flows from {source-a} to {source-b}?"
+   - "What contracts exist between {source-a} and {source-b}?"
+   - "Where do {source-a} and {source-b} share entities or schemas?"
 
-For each source the user provided, ask:
-- Full human-readable name (e.g., "Acme Ingest Service" for `service-a`)
-- Domain label (e.g., "acme", "payments")
-- Owning team name
-- One-line description
+**Question format:**
 
-Write `sources/registries/repos.yaml` inside the reef directory:
-
-```yaml
-repos:
-  - name: service-a
-    full_name: Acme Ingest Service
-    domain: acme
-    team: platform-team
-    description: Manages order intake and data processing
-```
-
-If the user gives partial answers, fill in what you can and mark the rest as TBD. These files can always be updated later.
-
----
-
-## Step 6 — Documentation sources
-
-Ask: "Are there any existing documents that should inform this reef? Architecture docs, SRS documents, wiki exports, PRDs — anything that captures knowledge not visible in the code."
-
-If the user mentions documents:
-- Note each one with a brief description
-- Read the reef's `.reef/project.json`, add a `documentation_sources` field:
-
-```json
-{
-  "documentation_sources": [
-    { "name": "Architecture Doc", "path": "/path/to/doc.pdf", "type": "architecture" },
-    { "name": "Service SRS", "path": "/path/to/srs.md", "type": "requirements" }
-  ]
-}
-```
-
-Valid types: `architecture`, `requirements`, `design`, `api_spec`, `wiki`, `prd`, `other`.
-
-If the user has nothing to add, move on. Do not push.
-
----
-
-## Step 7 — Question bank
-
-Ask: "What questions do you need this wiki to answer? These become the north star — `/reef:test` will check whether the reef can actually answer them."
-
-Give a few examples to prime the pump:
-- "How does data flow from service-a to service-d?"
-- "What happens when an order status changes?"
-- "Which services share the core schema?"
-
-Collect the user's questions. Write them to `.reef/questions.json` inside the reef directory:
-
+Write to `.reef/questions.json`:
 ```json
 {
   "questions": [
     {
       "id": "Q-001",
-      "text": "How does data flow from service-a to service-d?",
+      "text": "What are the system boundaries and external dependencies of service-a?",
+      "source": "service-a",
+      "phase": "orientation",
       "added": "2026-04-10",
       "status": "unanswered"
     }
@@ -184,60 +121,43 @@ Collect the user's questions. Write them to `.reef/questions.json` inside the re
 }
 ```
 
-Auto-increment the ID. Set `status` to `"unanswered"` for all new questions.
+Report: "Generated N discovery questions across M sources. These will steer the snorkel pass."
 
-If the user wants to skip: create the file with an empty `questions` array. They can always add questions later.
+Show the user the questions briefly — a numbered list, grouped by source. Do not ask for approval. They can refine later.
 
 ---
 
-## Step 8 — Log and suggest next steps
+## Step 6 — Auto-trigger snorkel
+
+Report: "Starting the snorkel pass..."
+
+Now execute the full `/reef:snorkel` skill. Read `/Users/jessi/Projects/seaof-ai/reef/skills/snorkel/SKILL.md` and follow its instructions from Step 2 onward (skip Step 1 since the index is already fresh).
+
+The snorkel pass will use the question bank you just generated to produce richer, more directed artifacts.
+
+---
+
+## Step 7 — Log
 
 Run:
 ```bash
-python3 /Users/jessi/Projects/seaof-ai/reef/scripts/reef.py log "Reef initialized: <name> covering <comma-separated source names>" --reef <resolved-reef-path>
+python3 /Users/jessi/Projects/seaof-ai/reef/scripts/reef.py log "Reef initialized: <name> covering <sources>. Generated <N> questions, <M> draft artifacts." --reef <resolved-reef-path>
 ```
-
-Then tell the user what was created. Summarize:
-- Reef name and location
-- Sources indexed (with file counts)
-- Registry files created (if any)
-- Questions seeded (if any)
-
-Suggest next steps:
-
-"The reef is ready. Two ways to start building knowledge:
-
-- `/reef:snorkel` — auto-discovers 3-6 draft artifacts in about 5 minutes, no questions asked. Good for getting a quick lay of the land.
-- `/reef:scuba` — guided exploration where you direct what gets documented. Deeper, slower, better for areas you already know are important.
-
-Most people start with snorkel to see what Reef finds, then use scuba to deepen the drafts."
 
 ---
 
 ## Voice and Personality
 
-Throughout this entire skill:
-
-- Use Curious Researcher voice. You are a knowledgeable colleague, not a help-desk bot.
-- Present-participle narration for progress: "Scaffolding the reef structure...", "Indexing source files...", "Writing the repo registry..."
+- Curious Researcher voice. Present-participle narration: "Scaffolding the reef...", "Indexing source files...", "Generating discovery questions..."
 - No emojis. No exclamation marks.
-- Conversational but efficient. Ask one question at a time. Do not dump all questions at once.
-- If the user gives terse answers, work with what you get. Do not ask for clarification unless something is genuinely ambiguous.
-- When reporting script output, translate JSON into natural language. The user should never see raw JSON unless they ask for it.
+- Fast and automated. The user answered three questions and now watches things happen. Do not ask for input during steps 3-6.
+- When reporting the question bank, be brief. The user wants to see artifacts, not a wall of questions.
 
 ---
 
 ## Error Handling
 
-- If `reef.py init` fails: report the error message from the JSON output. Common causes: directory already exists (suggest `--force` or choosing a different path), permission denied, invalid path.
-- If `reef.py index` fails for one source: report which source failed, continue with others. Suggest checking that the path exists and contains files.
-- If any reef.py command is not found: check that `/Users/jessi/Projects/seaof-ai/reef/scripts/reef.py` exists. If it does not, tell the user the plugin may not be fully installed.
-- If the user wants to bail out mid-skill: that is fine. Whatever was already created remains on disk. They can run `/reef:init` again to pick up where they left off (Step 1 will detect the existing reef).
-
----
-
-## Important
-
-- Always use `/Users/jessi/Projects/seaof-ai/reef` to reference the plugin's own files. Never hardcode paths to the plugin directory.
-- All `reef.py` commands output JSON to stdout. Parse it. Report results in natural language.
-- The user should feel like they are having a conversation, not filling out a form. Adapt the pacing to how they respond — if they are giving detailed answers, match that energy. If they are terse, keep it tight.
+- `reef.py init` fails: report error. Common causes: directory exists, permissions.
+- `reef.py index` fails for a source: warn, skip, continue with others.
+- Source path does not exist: warn the user, do not include it in project.json.
+- If snorkel fails mid-way: whatever artifacts were written remain on disk. The user can run `/reef:snorkel` again.
