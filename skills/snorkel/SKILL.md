@@ -52,13 +52,13 @@ For each source, do a quick structural scan:
 - Note the tech stack
 
 Adapt the template questions to what you found. For each source, generate 8-15 specific questions:
-- **Concrete, not generic.** Instead of "What are the core entities?", write "What are the core entities in ctl-data-server and how do Project, Case, and Job relate?" if you see those model names.
+- **Concrete, not generic.** Instead of "What are the core entities?", write "What are the core entities in order-service and how do Order, LineItem, and Payment relate?" if you see those model names.
 - **Answerable from code.** Every question should be something you can investigate by reading source files.
 - **Ordered by discovery priority:** System boundaries first, then data model, then API surface, then cross-system.
 
 For multi-source reefs, add cross-system questions using the service groupings:
-- **Within a service**: "How do ctl-data-server and ctl-authenticator divide responsibilities within CTL?"
-- **Across services**: "What data flows from CDM to RDP?" / "What contracts exist between CTL and DAIP?"
+- **Within a service**: "How do pay-gateway and pay-ledger divide responsibilities within Payments?"
+- **Across services**: "What data flows from Orders to Fulfillment?" / "What contracts exist between Payments and Inventory?"
 
 Write to `.reef/questions.json`:
 ```json
@@ -66,8 +66,8 @@ Write to `.reef/questions.json`:
   "questions": [
     {
       "id": "Q-001",
-      "text": "What are the system boundaries and external dependencies of ctl-data-server?",
-      "source": "ctl-data-server",
+      "text": "What are the system boundaries and external dependencies of order-service?",
+      "source": "order-service",
       "phase": "snorkel",
       "added": "2026-04-10",
       "status": "unanswered"

@@ -82,7 +82,7 @@ Wait for the user's answer before proceeding.
 
 ## Step 3 — Ask what it covers
 
-Ask: "Could you give a brief introduction of what this reef covers? For example: 'CSG data ecosystem — 4 services for cancer screening data management' or 'our payments platform.'"
+Ask: "Could you give a brief introduction of what this reef covers? For example: 'our e-commerce platform — 4 services for order processing and fulfillment' or 'the payments domain.'"
 
 Save the user's answer to `.reef/project.json` under a `description` field later during scaffolding. This front-loads domain context (service names, ecosystem, product area) so service grouping and question generation are more accurate.
 
@@ -167,10 +167,10 @@ Report results: files indexed per source, total count. If a source fails, warn a
 Read `CLAUDE.md` first (if present), then `README.md` for each source. Extract service/product identity. Also use the reef description from `.reef/project.json` as context.
 
 Try to group repos into services using these signals, in order:
-- **Explicit identity** from CLAUDE.md/README.md (e.g., "authentication service for the CTL ecosystem")
-- **Shared name prefixes or postfixes** (e.g., `ctl-authenticator` + `ctl-data-server` + `ctl-office`)
-- **Acronym expansion** — check if a repo prefix is an acronym of another repo's full name (e.g., `rdp-prefect-gateway` prefix "rdp" matches "research-data-pipeline" initials R.D.P.)
-- **Shared infrastructure** references (e.g., same Keycloak realm, same database, both using Prefect)
+- **Explicit identity** from CLAUDE.md/README.md (e.g., "authentication service for the payments ecosystem")
+- **Shared name prefixes or postfixes** (e.g., `pay-gateway` + `pay-ledger` + `pay-admin`, or `order-service` + `order-worker`)
+- **Acronym expansion** — check if a repo prefix is an acronym of another repo's full name (e.g., `ofs-worker` prefix "ofs" matches "order-fulfillment-service" initials O.F.S.)
+- **Shared infrastructure** references (e.g., same auth provider, same database, same message broker)
 
 Present your best guess as a table and ask the user to confirm or correct:
 
@@ -188,7 +188,7 @@ The user responds in natural language. Parse their corrections, apply them, and 
 ```json
 {
   "services": [
-    { "name": "CTL", "full_name": "Closing the Loop", "sources": ["ctl-authenticator", "ctl-data-server", "ctl-office", "radiology-annotation-frontend"] }
+    { "name": "Payments", "full_name": "Payments Platform", "sources": ["pay-gateway", "pay-ledger", "pay-admin", "checkout-frontend"] }
   ]
 }
 ```

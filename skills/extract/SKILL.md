@@ -60,10 +60,10 @@ Tech stack detected:
 
 | Repo                      | API Framework | ORM/ODM      | DB         |
 |---------------------------|---------------|--------------|------------|
-| csg-case-curator-backend  | FastAPI       | SQLAlchemy   | PostgreSQL |
-| ctl-data-server           | FastAPI       | Beanie       | MongoDB    |
-| aipf-authz-api            | Go (chi)      | GORM         | PostgreSQL |
-| rdp-prefect-gateway       | Go (net/http) | —            | —          |
+| order-service             | FastAPI       | SQLAlchemy   | PostgreSQL |
+| pay-gateway               | Express       | Prisma       | PostgreSQL |
+| inventory-api             | Go (chi)      | GORM         | PostgreSQL |
+| notification-worker       | —             | —            | —          |
 ```
 
 ---
@@ -168,10 +168,10 @@ Extraction complete:
 
 | Repo                      | ERD | API |
 |---------------------------|-----|-----|
-| csg-case-curator-backend  | yes | yes |
-| ctl-data-server           | yes | yes |
-| aipf-authz-api            | yes | yes (existing openapi.json) |
-| rdp-prefect-gateway       | —   | —   |
+| order-service             | yes | yes |
+| pay-gateway               | yes | yes |
+| inventory-api             | yes | yes (existing openapi.json) |
+| notification-worker       | —   | —   |
 ```
 
 Then re-index:
