@@ -34,56 +34,15 @@ Report results in natural language.
 
 ---
 
-## Step 2 — Extract API specs and ERDs (optional)
+## Step 2 — Extract API specs and ERDs
 
-During the structural scan, if API frameworks or ORMs are detected in any source, offer to run extraction:
+If API frameworks or ORMs are detected in any source, run extraction automatically. Read `/Users/jessi/Projects/seaof-ai/reef/skills/extract/SKILL.md` and follow its instructions using the "Called from init" integration mode (skip context loading and re-indexing). The extracted specs land in `sources/raw/`.
 
-> "I detected API frameworks and/or data models in some of your repos. I can extract API summaries and ERD diagrams now — this gives me concrete structural data to work with. Want me to run extraction? (You can always run `/reef:extract` later.)"
-
-- If yes: read `/Users/jessi/Projects/seaof-ai/reef/skills/extract/SKILL.md` and follow its instructions using the "Called from init" integration mode (skip context loading and re-indexing). The extracted specs land in `sources/raw/`.
-- If no/skip: move on. Mention: "No problem. Run `/reef:extract` anytime."
-
-If no API frameworks or ORMs are detected, skip this step silently.
+If no API frameworks or ORMs are detected, skip this step silently. Do not ask the user.
 
 ---
 
-## Step 3 — Infer service groupings
-
-Read `CLAUDE.md` first (if present), then `README.md` for each source. Extract service/product identity.
-
-Try to group repos into services using these signals, in order:
-- **Explicit identity** from CLAUDE.md/README.md (e.g., "authentication service for the CTL ecosystem")
-- **Shared name prefixes or postfixes** (e.g., `ctl-authenticator` + `ctl-data-server` + `ctl-office`, or `ai-platform-foundation` + `ai-platform-foundation-admin`)
-- **Acronym expansion** — check if a repo prefix is an acronym of another repo's full name (e.g., `rdp-prefect-gateway` prefix "rdp" matches "research-data-pipeline" initials R.D.P.)
-- **Shared infrastructure** references (e.g., same Keycloak realm, same database, same API gateway, both using Prefect)
-- Use the reef description from `.reef/project.json` (`description` field) as additional context — the user may have mentioned service names there.
-
-Present your best guess as a table and ask the user to confirm or correct:
-
-> I think these repos group like this:
->
-> | Service          | Repos                                    |
-> |------------------|------------------------------------------|
-> | {best guess}     | repo-1, repo-2                           |
-> | {best guess}     | repo-3, repo-4, repo-5                   |
-> | ?                | repo-6 (no clear signal)                 |
->
-> Any corrections?
-
-The user responds in natural language. Parse their corrections, apply them, and save to `.reef/project.json` under a `services` field:
-```json
-{
-  "services": [
-    { "name": "CTL", "full_name": "Closing the Loop", "sources": ["ctl-authenticator", "ctl-data-server", "ctl-office", "radiology-annotation-frontend"] }
-  ]
-}
-```
-
-If service groupings already exist in `project.json` (e.g., from a previous snorkel run), show them and ask: "These service groupings are from last time. Still correct?"
-
----
-
-## Step 4 — Generate discovery questions
+## Step 3 — Generate discovery questions
 
 Read `/Users/jessi/Projects/seaof-ai/reef/references/understanding-template.md`. For snorkel, focus on the **Snorkel (S1-S8)** questions.
 
@@ -123,7 +82,7 @@ Show the questions briefly — a numbered list, grouped by service. Do not ask f
 
 ---
 
-## Step 5 — Question-guided structural scan
+## Step 4 — Question-guided structural scan
 
 For each source in project.json:
 
@@ -150,7 +109,7 @@ Report progress as you go: "Reading service-a's model layer — found 14 SQLAlch
 
 ---
 
-## Step 6 — Generate artifacts
+## Step 5 — Generate artifacts
 
 Generate artifacts guided by what you learned. For each source, produce:
 
@@ -201,7 +160,7 @@ python3 /Users/jessi/Projects/seaof-ai/reef/scripts/reef.py snapshot <artifact-i
 
 ---
 
-## Step 7 — Update question bank
+## Step 6 — Update question bank
 
 After generating artifacts, update `.reef/questions.json`:
 
@@ -213,7 +172,7 @@ This gives `/reef:test` and `/reef:scuba` a clear picture of what's covered and 
 
 ---
 
-## Step 8 — Wrap up
+## Step 7 — Wrap up
 
 Run:
 ```bash
@@ -264,13 +223,13 @@ Then suggest next steps:
 - **Source refs always relative** to source root.
 - **Stop when diminishing returns.** If a source is simple, 2-3 artifacts is fine. Don't pad.
 - **Cross-system contracts always-on.** When code calls another system, flag it.
-- **No user input.** Snorkel is fully automated. Read, generate, report.
+- **No user input.** Snorkel is fully automated. All interactive steps (service grouping, extract confirmation) happen in init before snorkel is triggered. Read, generate, report.
 
 ---
 
 ## If Called Without Init
 
-If `.reef/questions.json` is empty or missing, Step 4 (Generate discovery questions) will create it. If `.reef/project.json` has no service groupings, Step 3 will handle that. Snorkel is self-sufficient — it can run standalone on any reef that has been scaffolded and indexed.
+If `.reef/questions.json` is empty or missing, Step 3 (Generate discovery questions) will create it. If `.reef/project.json` has no service groupings, snorkel will proceed without them — questions will be per-repo rather than per-service. Suggest the user run `/reef:init` for a better experience. Snorkel is self-sufficient — it can run standalone on any reef that has been scaffolded and indexed.
 
 ---
 

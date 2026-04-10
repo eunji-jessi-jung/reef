@@ -13,8 +13,10 @@ You MUST complete these interactions with the user IN ORDER. Do NOT skip any. Do
 3. **Ask what it covers** (Step 3) — "Could you give a brief introduction of what this reef covers?" STOP and wait.
 4. **Ask location and sources** (Step 4) — "Where should the reef live? And where are the codebases?" STOP and wait.
 5. **Scan for repos** — Run `find <directory> -name .git -type d 2>/dev/null | sed 's|/.git||' | sort` — this is the ONLY correct way to find repos. Do NOT use ls, glob, or manual directory listing. Present results and ask user to confirm.
+6. **Scaffold and index** (Steps 5-6) — automated, no user input.
+7. **Service grouping** (Step 7) — present best guess as table, ask user to correct. STOP and wait.
 
-Only after ALL five interactions are complete, proceed to automated steps (5-7).
+Only after ALL interactions are complete, auto-trigger snorkel (Step 8).
 
 ---
 
@@ -160,7 +162,40 @@ Report results: files indexed per source, total count. If a source fails, warn a
 
 ---
 
-## Step 7 — Auto-trigger snorkel
+## Step 7 — Infer service groupings
+
+Read `CLAUDE.md` first (if present), then `README.md` for each source. Extract service/product identity. Also use the reef description from `.reef/project.json` as context.
+
+Try to group repos into services using these signals, in order:
+- **Explicit identity** from CLAUDE.md/README.md (e.g., "authentication service for the CTL ecosystem")
+- **Shared name prefixes or postfixes** (e.g., `ctl-authenticator` + `ctl-data-server` + `ctl-office`)
+- **Acronym expansion** — check if a repo prefix is an acronym of another repo's full name (e.g., `rdp-prefect-gateway` prefix "rdp" matches "research-data-pipeline" initials R.D.P.)
+- **Shared infrastructure** references (e.g., same Keycloak realm, same database, both using Prefect)
+
+Present your best guess as a table and ask the user to confirm or correct:
+
+> I think these repos group like this:
+>
+> | Service          | Repos                                    |
+> |------------------|------------------------------------------|
+> | {best guess}     | repo-1, repo-2                           |
+> | {best guess}     | repo-3, repo-4, repo-5                   |
+> | ?                | repo-6 (no clear signal)                 |
+>
+> Any corrections?
+
+The user responds in natural language. Parse their corrections, apply them, and save to `.reef/project.json` under a `services` field:
+```json
+{
+  "services": [
+    { "name": "CTL", "full_name": "Closing the Loop", "sources": ["ctl-authenticator", "ctl-data-server", "ctl-office", "radiology-annotation-frontend"] }
+  ]
+}
+```
+
+---
+
+## Step 8 — Auto-trigger snorkel
 
 Report: "Reef is set up. Starting discovery..."
 
@@ -169,7 +204,7 @@ Run:
 python3 /Users/jessi/Projects/seaof-ai/reef/scripts/reef.py log "Reef initialized: <name> covering <sources>." --reef <resolved-reef-path>
 ```
 
-Now execute the full `/reef:snorkel` skill. Read `/Users/jessi/Projects/seaof-ai/reef/skills/snorkel/SKILL.md` and follow its instructions from the beginning. Snorkel handles everything from here: extraction, service grouping, question generation, and artifact creation.
+Now execute the full `/reef:snorkel` skill. Read `/Users/jessi/Projects/seaof-ai/reef/skills/snorkel/SKILL.md` and follow its instructions. Snorkel is fully automated from here — no user input needed.
 
 ---
 
@@ -177,7 +212,7 @@ Now execute the full `/reef:snorkel` skill. Read `/Users/jessi/Projects/seaof-ai
 
 - Curious Researcher voice. Present-participle narration: "Scaffolding the reef...", "Indexing source files..."
 - No emojis. No exclamation marks.
-- Fast and automated. The user answered three questions (name, description, location+sources) and confirmed the source list. After that, do not ask for input until snorkel takes over.
+- Fast and automated. The user answered three questions (name, description, location+sources), confirmed sources, and corrected service groupings. After that, do not ask for input — snorkel runs unattended.
 
 ---
 
