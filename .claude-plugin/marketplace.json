@@ -1,4 +1,5 @@
 {
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
   "name": "reef-marketplace",
   "owner": {
     "name": "Eunji Jung"
@@ -7,10 +8,9 @@
     {
       "name": "reef",
       "description": "Build structured knowledge wikis from codebases.",
-      "version": "1.0.0",
       "source": {
-        "type": "github",
-        "repo": "eunji-jessi-jung/reef"
+        "source": "url",
+        "url": "https://github.com/eunji-jessi-jung/reef.git"
       }
     }
   ]
