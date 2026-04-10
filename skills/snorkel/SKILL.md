@@ -13,11 +13,12 @@ The key difference from a blind scan: snorkel reads the question bank and uses i
 ## Context Loading
 
 1. **Find the reef root.** Look for `.reef/` in cwd or parent directories. If not found: "No reef found. Run `/reef:init` first."
-2. **Read `.reef/project.json`** for project name and source paths. If no sources: "No sources configured. Run `/reef:init` to add source paths."
-3. **Read `/Users/jessi/Projects/seaof-ai/reef/references/artifact-contract.md`** — the rulebook. Every artifact must conform exactly.
-4. **Read `/Users/jessi/Projects/seaof-ai/reef/references/methodology.md`** — voice and personality.
-5. **Read `.reef/questions.json`** — the discovery questions. These steer what you investigate and document.
-6. **Read existing artifacts** in `artifacts/` to avoid duplicates.
+2. **Read `.reef/project.json`** for project name, source paths, and service groupings. If no sources: "No sources configured. Run `/reef:init` to add source paths."
+3. **Read `/Users/jessi/Projects/seaof-ai/reef/references/methodology.md`** — voice and personality.
+4. **Read `.reef/questions.json`** — the discovery questions. These steer what you investigate and document.
+5. **Read existing artifacts** in `artifacts/` to avoid duplicates.
+
+Note: The artifact contract and templates are embedded inline in Step 5 below. You do not need to read them separately.
 
 ---
 
@@ -123,40 +124,69 @@ Generate artifacts guided by what you learned. For each source, produce:
 
 ### For each artifact
 
-**a. Read the template** from `/Users/jessi/Projects/seaof-ai/reef/references/templates/` for the artifact type.
+**a. Generate frontmatter** using this exact field order. Do NOT deviate:
 
-**b. Generate frontmatter** following the artifact contract exactly. All fields in correct order:
+```yaml
+---
+id: "SYS-ORDERS"                        # uppercase prefix + uppercase slug
+type: "system"                           # lowercase type matching prefix
+title: "Order Management Service"        # human-readable
+domain: "orders"                         # domain slug
+status: "draft"                          # always "draft" for snorkel
+last_verified: 2026-04-10               # unquoted ISO date, today
+freshness_note: "snorkel-depth scan"     # never empty
+freshness_triggers:                      # sorted alphabetically
+  - "src/models/order.py"
+  - "src/services/workflow.py"
+known_unknowns:                          # generous — list what you could NOT answer
+  - "Retry logic for failed payments unclear"
+tags:
+  - orders
+  - fastapi
+aliases:
+  - "OMS"
+relates_to:                              # sorted by target
+  - type: "feeds"
+    target: "[[SYS-FULFILLMENT]]"
+sources:                                 # sorted by ref
+  - category: "implementation"
+    type: "github"
+    ref: "src/main.py"
+notes: ""
+---
+```
 
-- `id`: uppercase prefix + uppercase name (e.g., `SYS-INGEST`, `SCH-INGEST-ORDER`)
-- `type`: matches the prefix
-- `title`: human-readable name
-- `domain`: source name or domain label
-- `status`: always `"draft"` for snorkel
-- `last_verified`: today's date, unquoted ISO format
-- `freshness_note`: honest about scan depth
-- `freshness_triggers`: key source files that would invalidate this artifact
-- `known_unknowns`: generous list of gaps — things the question bank asked that you could not fully answer
-- `tags`: tech stack, domain terms
-- `aliases`: common abbreviations
-- `relates_to`: sorted by target, each with `type` and `target` as `[[WIKILINK]]`
-- `sources`: sorted by ref, each with `category`, `type`, `ref` (relative to source root)
-- `notes`: empty string
+**b. Write body sections** based on artifact type:
 
-**c. Write body sections:**
+| Type | Prefix | Required Sections |
+|------|--------|-------------------|
+| System | SYS- | Overview, Key Facts, Responsibilities, Core Concepts, Related |
+| Schema | SCH- | Overview, Key Facts, Entities (with field tables), Related |
+| API | API- | Overview, Key Facts, Source of Truth, Resource Map (endpoint tables), Related |
+| Process | PROC- | Purpose, Key Facts, then ONE of: States (lifecycle), Steps (workflow), Phases (pipeline), Triggers (event-driven), Related |
+| Decision | DEC- | Context, Decision, Key Facts, Rationale, Consequences (Positive/Negative/Neutral), Related |
+| Glossary | GLOSSARY- | Overview, Terms (table: Term / Definition / See Also), Related |
+| Contract | CON- | Parties, Key Facts, Agreement, Current State, Related |
+| Risk | RISK- | Description, Key Facts, Impact, Severity+Resolution, Related |
 
-- `## Overview` — 2-4 sentences grounded in what you actually found, not generic descriptions
-- `## Key Facts` — each fact linked to source with `→` syntax. **Use the Fact/Source/Confidence structure from your question analysis.** Aim for 3-5 facts minimum, each citing specific files.
-- Type-specific sections per the template
-- `## Related` — wikilinks matching frontmatter `relates_to`
+**Key Facts format** (required for all types except Glossary):
+```markdown
+## Key Facts
+- Order status transitions enforced at service layer → src/services/order.py
+- Payment webhook triggers fulfillment flow → src/handlers/payment_webhook.py
+- No retry mechanism for failed inventory checks → known gap
+```
 
-**d. Write the file** to the correct subdirectory. Filename: lowercase ID + `.md`.
+Each fact is an atomic, verifiable claim linked to its source with `→`.
 
-**e. Snapshot:**
+**c. Write the file** to the correct subdirectory. Filename: lowercase ID + `.md` (e.g., `sys-orders.md`).
+
+**d. Snapshot:**
 ```bash
 python3 /Users/jessi/Projects/seaof-ai/reef/scripts/reef.py snapshot <artifact-id-lowercase> --reef <reef-root>
 ```
 
-**f. Present to the user.** Show each artifact one at a time as it's written.
+**e. Present to the user.** Show each artifact one at a time as it's written.
 
 ---
 
@@ -222,7 +252,7 @@ Only mention this if the gaps are genuinely the kind that docs would fill. Do no
 
 ## Key Rules
 
-- **Always read the artifact contract before writing any artifact.**
+- **Follow the frontmatter schema and body sections in Step 5 exactly.**
 - **Questions steer discovery.** Don't just scan blindly — use the question bank to decide what to investigate.
 - **Artifact IDs**: uppercase prefix + uppercase domain/name, hyphen-separated.
 - **Filenames**: lowercase ID + `.md`.
