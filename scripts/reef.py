@@ -350,7 +350,16 @@ def cmd_snapshot(args) -> None:
     if fm is None:
         fail(f"Cannot parse frontmatter for {artifact_id}")
 
-    source_refs = fm.get("sources", []) or []
+    raw_sources = fm.get("sources", []) or []
+    # sources can be strings or dicts with a "ref" field
+    source_refs = []
+    for s in raw_sources:
+        if isinstance(s, dict):
+            r = s.get("ref")
+            if r:
+                source_refs.append(r)
+        elif isinstance(s, str):
+            source_refs.append(s)
     source_index = read_json(reef / ".reef" / "source-index.json")
 
     snapshot_sources = {}
@@ -581,7 +590,10 @@ def cmd_lint(args) -> None:
                 })
 
         # Check 3: Source file existence
-        for src_ref in (fm.get("sources") or []):
+        for src_entry in (fm.get("sources") or []):
+            src_ref = src_entry.get("ref", "") if isinstance(src_entry, dict) else str(src_entry)
+            if not src_ref:
+                continue
             if src_ref not in existing_source_files:
                 errors.append({
                     "artifact": aid,
@@ -688,7 +700,14 @@ def cmd_rebuild_map(args) -> None:
     mapping = {}  # source_ref -> [artifact_ids]
     for _, fm in artifacts:
         aid = fm.get("id", "")
-        for src_ref in (fm.get("sources") or []):
+        for src_entry in (fm.get("sources") or []):
+            # sources can be strings or dicts with a "ref" field
+            if isinstance(src_entry, dict):
+                src_ref = src_entry.get("ref", "")
+            else:
+                src_ref = str(src_entry)
+            if not src_ref:
+                continue
             mapping.setdefault(src_ref, [])
             if aid not in mapping[src_ref]:
                 mapping[src_ref].append(aid)
