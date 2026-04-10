@@ -62,6 +62,8 @@ Ask these one at a time. Keep it tight.
 
 **Name:** "What should this reef be called?" — becomes the directory name (e.g., `my-reef`, `payments-reef`).
 
+**What is it for:** "Could you give a brief introduction of what this reef covers? For example: 'CSG data ecosystem — 4 services for cancer screening data management' or 'our payments platform.'" Save the user's answer to `.reef/project.json` under a `description` field. This front-loads domain context (service names, ecosystem, product area) so service grouping and question generation are more accurate later.
+
 **Location:** "Where should it live?" — default: new directory in cwd. User can specify any path.
 
 **Sources:** Ask the user where to look: "Where are the codebases? Give me a root directory to scan." Default suggestion: current working directory.
