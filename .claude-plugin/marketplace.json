@@ -8,7 +8,10 @@
       "name": "reef",
       "description": "Build structured knowledge wikis from codebases.",
       "version": "1.0.0",
-      "source": "."
+      "source": {
+        "type": "github",
+        "repo": "eunji-jessi-jung/reef"
+      }
     }
   ]
 }
