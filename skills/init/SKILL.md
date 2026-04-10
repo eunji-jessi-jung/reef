@@ -4,24 +4,9 @@ description: "Bootstrap a new reef wiki from your codebase"
 
 # reef:init
 
-Bootstrap a new reef and immediately start discovering knowledge. The user answers three questions (name, location, sources), then reef handles everything: scaffold, index, auto-generate discovery questions, and run a snorkel pass. By the end, the user has draft artifacts and a question bank without having to think about either upfront.
-
----
-
-## Context Loading
-
-Read these reference files before starting:
-
-1. `/Users/jessi/Projects/seaof-ai/reef/references/artifact-contract.md` — ID conventions and artifact types.
-2. `/Users/jessi/Projects/seaof-ai/reef/references/methodology.md` — voice and personality. Use the Curious Researcher voice throughout.
-
----
-
 ## Step 0 — Welcome
 
-Before anything else, orient the user. This may be their first time hearing about Reef.
-
-Print the following (adapt naturally, but hit these points):
+**This must be your first output.** Before reading any other files, before doing anything else, print the following to the user:
 
 ```
     ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~
@@ -49,6 +34,15 @@ Do not ask for confirmation. Just present this and move to Step 1.
 
 ---
 
+## Context Loading
+
+Before proceeding past Step 0, read these reference files:
+
+1. `/Users/jessi/Projects/seaof-ai/reef/references/artifact-contract.md` — ID conventions and artifact types.
+2. `/Users/jessi/Projects/seaof-ai/reef/references/methodology.md` — voice and personality. Use the Curious Researcher voice throughout.
+
+---
+
 ## Step 1 — Check for an existing reef
 
 Look for a `.reef/` directory in the current working directory and in any path the user provides.
@@ -68,11 +62,17 @@ Ask these one at a time. Keep it tight.
 
 **Location:** "Where should it live?" — default: new directory in cwd. User can specify any path.
 
-**Sources:** Auto-discover git repos in the current working directory. Scan two levels deep for directories containing `.git/`.
+**Sources:** Ask the user where to look: "Where are the codebases? Give me a root directory to scan." Default suggestion: current working directory.
+
+Once the user provides a directory, scan it for git repos:
+1. Look for `.git/` in the given directory itself.
+2. Look one level down for subdirectories containing `.git/`.
+3. Look two levels down for subdirectories containing `.git/`.
+4. Collect all unique git repos found.
 
 Present what you find:
 
-> "I found N codebases in {cwd}:
+> "I found N codebases under {directory}:
 >
 > - repo-a
 > - repo-b
@@ -83,7 +83,7 @@ Present what you find:
 
 The user either confirms ("all" / "yes" / "looks right") or excludes ("skip repo-c and repo-d"). Apply their answer.
 
-- If no git repos are found in cwd, ask: "No codebases found here. What directory should I scan?"
+- If no git repos are found, ask: "No codebases found there. Try a different directory?"
 - Multiple sources: "Good — that is how Reef discovers cross-system contracts."
 - Single source: "You can add more later."
 
