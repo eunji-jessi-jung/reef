@@ -56,17 +56,31 @@ Look for a `.reef/` directory in the current working directory and in any path t
 
 ---
 
-## Step 2 — Three questions, then go
+## Step 2 — Ask the name
 
-Ask these one at a time. Keep it tight.
+Ask: "What should this reef be called?" — becomes the directory name (e.g., `my-reef`, `payments-reef`).
 
-**Name:** "What should this reef be called?" — becomes the directory name (e.g., `my-reef`, `payments-reef`).
+Wait for the user's answer before proceeding.
 
-**What is it for:** "Could you give a brief introduction of what this reef covers? For example: 'CSG data ecosystem — 4 services for cancer screening data management' or 'our payments platform.'" Save the user's answer to `.reef/project.json` under a `description` field. This front-loads domain context (service names, ecosystem, product area) so service grouping and question generation are more accurate later.
+---
 
-**Location:** "Where should it live?" — default: new directory in cwd. User can specify any path.
+## Step 3 — Ask what it covers
 
-**Sources:** Ask the user where to look: "Where are the codebases? Give me a root directory to scan." Default suggestion: current working directory.
+Ask: "Could you give a brief introduction of what this reef covers? For example: 'CSG data ecosystem — 4 services for cancer screening data management' or 'our payments platform.'"
+
+Save the user's answer to `.reef/project.json` under a `description` field later during scaffolding. This front-loads domain context (service names, ecosystem, product area) so service grouping and question generation are more accurate.
+
+Wait for the user's answer before proceeding.
+
+---
+
+## Step 4 — Ask location and sources
+
+Ask both together: "Where should the reef live? (default: new directory here) And where are the codebases I should scan?"
+
+Default location: new directory in cwd named after the reef. Default scan directory: current working directory. The user can override either.
+
+**Sources:** Once the user provides a scan directory, find all git repos recursively:
 
 Once the user provides a directory, scan it recursively for all git repos:
 
@@ -97,7 +111,7 @@ That is it for user input. Everything from here is automated.
 
 ---
 
-## Step 3 — Scaffold
+## Step 5 — Scaffold
 
 Report: "Scaffolding the reef..."
 
@@ -121,7 +135,7 @@ After scaffolding, mention: "If you have existing docs (architecture diagrams, S
 
 ---
 
-## Step 4 — Index
+## Step 6 — Index
 
 Report: "Indexing source files..."
 
@@ -134,7 +148,7 @@ Report results: files indexed per source, total count. If a source fails, warn a
 
 ---
 
-## Step 5 — Extract API specs and ERDs (optional)
+## Step 7 — Extract API specs and ERDs (optional)
 
 During the structural scan, if API frameworks or ORMs are detected in any source, offer to run extraction:
 
@@ -147,7 +161,7 @@ If no API frameworks or ORMs are detected, skip this step silently.
 
 ---
 
-## Step 6 — Auto-generate discovery questions
+## Step 8 — Auto-generate discovery questions
 
 This is the critical step. After indexing, generate a tailored question bank for each source based on what the structural scan reveals. These questions steer snorkel and later become the `/reef:test` north star.
 
@@ -221,7 +235,7 @@ Show the user the questions briefly — a numbered list, grouped by source. Do n
 
 ---
 
-## Step 7 — Auto-trigger snorkel
+## Step 9 — Auto-trigger snorkel
 
 Report: "Starting the snorkel pass..."
 
@@ -231,7 +245,7 @@ The snorkel pass will use the question bank you just generated to produce richer
 
 ---
 
-## Step 8 — Log
+## Step 10 — Log
 
 Run:
 ```bash
@@ -244,7 +258,7 @@ python3 /Users/jessi/Projects/seaof-ai/reef/scripts/reef.py log "Reef initialize
 
 - Curious Researcher voice. Present-participle narration: "Scaffolding the reef...", "Indexing source files...", "Generating discovery questions..."
 - No emojis. No exclamation marks.
-- Fast and automated. The user answered two questions (name, location), confirmed sources, and corrected service groupings. After that, do not ask for input — steps 5-7 run unattended.
+- Fast and automated. The user answered three questions (name, description, location+sources), confirmed source list, and corrected service groupings. After that, do not ask for input — steps 7-9 run unattended.
 - When reporting the question bank, be brief. The user wants to see artifacts, not a wall of questions.
 
 ---
