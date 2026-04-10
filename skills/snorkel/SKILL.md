@@ -133,6 +133,14 @@ python3 /Users/jessi/Projects/seaof-ai/reef/scripts/reef.py rebuild-map --reef <
 python3 /Users/jessi/Projects/seaof-ai/reef/scripts/reef.py log "Snorkel pass: generated N artifacts, answered M/T questions" --reef <reef-root>
 ```
 
+Then run the health report:
+```bash
+python3 /Users/jessi/Projects/seaof-ai/reef/scripts/reef.py lint --reef <reef-root>
+python3 /Users/jessi/Projects/seaof-ai/reef/scripts/reef.py diff --reef <reef-root>
+```
+
+Render a compact health summary using the `/reef:health` report format (text table with Unicode box-drawing). This gives the user an immediate visual sense of coverage and freshness.
+
 Summarize:
 - Artifacts created (list IDs and one-line descriptions)
 - Questions answered vs remaining

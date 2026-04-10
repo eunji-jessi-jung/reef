@@ -38,7 +38,14 @@ Ask these one at a time. Keep it tight.
 
 **Sources:** "What codebases does it cover? Give me the paths."
 
-Accept one or more paths. Verify each exists. Then:
+Accept one or more paths. For each path:
+
+1. **Verify it exists.** If not, warn and skip.
+2. **Check if it is a git repo** (has `.git/` inside). If yes, use it directly.
+3. **If it is NOT a git repo**, look one level down for subdirectories that contain `.git/`. If found, use those as the actual sources instead of the parent. Report: "Found N git repos inside {path}: {repo-a}, {repo-b}, ..."
+4. **If no .git found at either level**, use the path as-is but warn: "No git repo detected at {path} — using it as a plain directory source."
+
+Then:
 - Multiple sources: "Good — that is how Reef discovers cross-system contracts."
 - Single source: "You can add more later."
 
@@ -65,6 +72,8 @@ Update `.reef/project.json` with the source paths:
 ```
 
 Read the existing project.json first, then update — do not overwrite other fields.
+
+After scaffolding, mention: "If you have existing docs (architecture diagrams, SRS, PRDs, design docs), you can drop them into `sources/raw/` inside the reef directory. These give the snorkel pass richer context to work with. You can also use `/reef:feed` later to add documents."
 
 ---
 
