@@ -1,0 +1,13 @@
+{
+  "name": "reef",
+  "description": "Build structured knowledge wikis from codebases. Progressive depth: auto-discovery, Socratic deepening, exhaustive tracing. Obsidian-native, local-first, plain markdown.",
+  "version": "1.0.0",
+  "hooks": {
+    "SessionStart": [
+      {
+        "type": "command",
+        "command": "python3 -c \"import yaml\" 2>/dev/null || pip3 install --quiet pyyaml"
+      }
+    ]
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "displayName": "Sea of AI",
+  "plugins": [
+    {
+      "id": "reef",
+      "description": "Build structured knowledge wikis from codebases. Progressive depth: auto-discovery, Socratic deepening, exhaustive tracing. Obsidian-native, local-first, plain markdown.",
+      "version": "1.0.0",
+      "source": {
+        "source": "github",
+        "repo": "eunji-jessi-jung/reef",
+        "path": "."
+      }
+    }
+  ]
+}
