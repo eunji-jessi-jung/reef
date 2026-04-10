@@ -1,15 +1,14 @@
 {
-  "displayName": "Sea of AI",
+  "name": "reef-marketplace",
+  "owner": {
+    "name": "Eunji Jung"
+  },
   "plugins": [
     {
-      "id": "reef",
-      "description": "Build structured knowledge wikis from codebases. Progressive depth: auto-discovery, Socratic deepening, exhaustive tracing. Obsidian-native, local-first, plain markdown.",
+      "name": "reef",
+      "description": "Build structured knowledge wikis from codebases.",
       "version": "1.0.0",
-      "source": {
-        "source": "github",
-        "repo": "eunji-jessi-jung/reef",
-        "path": "."
-      }
+      "source": "."
     }
   ]
 }
