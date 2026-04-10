@@ -64,11 +64,13 @@ Ask these one at a time. Keep it tight.
 
 **Sources:** Ask the user where to look: "Where are the codebases? Give me a root directory to scan." Default suggestion: current working directory.
 
-Once the user provides a directory, scan it for git repos:
-1. Look for `.git/` in the given directory itself.
-2. Look one level down for subdirectories containing `.git/`.
-3. Look two levels down for subdirectories containing `.git/`.
-4. Collect all unique git repos found.
+Once the user provides a directory, scan it recursively for all git repos:
+
+```bash
+find <directory> -name .git -type d 2>/dev/null | sed 's|/.git||' | sort
+```
+
+This finds every git repo at any depth. Collect all results.
 
 Present what you find:
 
