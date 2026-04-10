@@ -1,74 +1,192 @@
 # Understanding Template
 
-33 questions across 7 phases for systematic codebase discovery. These are generalized starting points. Skills adapt them based on what the structural scan reveals about the target codebase.
+Discovery questions organized by diving level. Each level maps to a skill and builds on the context from the level above.
+
+| Level | Skill | Human input needed? | What it produces |
+|-------|-------|---------------------|------------------|
+| Snorkel | `/reef:snorkel` | No — code reading only | Draft artifacts with honest gaps |
+| Scuba | `/reef:scuba` | Yes — guided Q&A with user | Deepened artifacts, lifecycle maps, cross-system contracts |
+| Deep | `/reef:deep` | Yes — exhaustive tracing + user framing | Dense, line-cited artifacts for critical areas |
+
+Questions are ordered intentionally — each builds context for the next.
 
 ---
 
-## Phase A -- Orientation (5 questions)
+## Snorkel — What is here and what does it do?
 
-1. What is this system's primary purpose in one sentence?
-2. Who are the primary users or consumers of this system?
-3. What team owns this system and who makes architectural decisions?
-4. What are the critical runtime dependencies (databases, queues, external services)?
-5. What does the deployment topology look like?
+All answerable from code. No human input required. This is what a newly hired engineer or PM would need to learn in their first week.
+
+### S1. System boundaries
+
+Identify what each repo is and how repos relate to each other.
+
+- What is this repo? What role does it play? (API server, frontend, worker, auth service, gateway, etc.)
+- **Within-service**: How do the repos in this service divide responsibilities? (e.g., one is the domain API, one is auth, one is the admin UI, one is the annotator UI)
+- **Cross-service**: What external systems, services, or APIs does this service depend on or talk to?
+- What does the deployment topology look like? (docker-compose files, Helm charts, Kubernetes configs)
+
+**Artifact output:** SYS- artifact per service.
+
+### S2. Apps and high-level features
+
+Map the applications and extract what they do in user-facing terms.
+
+- What backend and frontend applications exist?
+- What are the high-level features each app provides? (e.g., "manages annotations," "manages admin users," "handles image uploads")
+- What user roles interact with each app? (if identifiable from route guards, role checks, or UI structure)
+
+**Artifact output:** Update SYS- artifacts with feature inventory.
+
+### S3. Data model
+
+Extract and describe the data layer. Semi-automatic via `/reef:extract`.
+
+- What database(s) does each repo use? (PostgreSQL, MongoDB, Redis, etc.)
+- What ORM or database client is used? (SQLAlchemy, Beanie, GORM, Prisma, etc.)
+- Extract the ERD — tables/collections, fields, types, primary keys, foreign keys, relationships.
+- Describe each table/collection: what it represents, what its key fields mean.
+- How are migrations managed? What tool is used?
+
+**Artifact output:** SCH- artifact per service. ERD diagram saved to `sources/raw/`.
+
+### S4. API surface
+
+Extract and describe the API layer. Semi-automatic via `/reef:extract`.
+
+- What API endpoints does each service expose?
+- What are the main resource groups and their CRUD operations?
+- How are routes organized? (versioning, grouping, middleware)
+- What are the request/response shapes for the key endpoints?
+
+**Artifact output:** API- artifact per service. OpenAPI spec saved to `sources/raw/`.
+
+### S5. Service roles and responsibilities
+
+Synthesize S1-S4 into a clear picture of what each service does and owns.
+
+- What is this service's primary responsibility in one sentence?
+- What domain concepts does it own? (i.e., what data and behavior belong to this service and no other)
+- What does it explicitly NOT own? (boundaries with adjacent services)
+
+**Artifact output:** Update SYS- artifacts with roles and responsibilities.
+
+### S6. Runtime architecture
+
+Map how the service runs at runtime — topology, storage, events, composition.
+
+- What processes run at runtime? (API server, worker, subscriber, scheduler, etc.)
+- What databases does each process connect to? Are they shared or separate?
+- What event/async systems exist? (message queues, pub/sub, Celery workers, etc.)
+- What are the synchronous vs asynchronous execution paths?
+- How is the service composed locally? (docker-compose services, startup scripts)
+
+**Artifact output:** PROC- artifact for runtime architecture per service.
+
+### S7. AuthN/AuthZ model
+
+Define how authentication and authorization work in each service.
+
+- How does authentication work? (JWT, session, OAuth2, API keys, service accounts)
+- What identity provider is used? (Keycloak, Auth0, custom, etc.)
+- How is authorization enforced? (RBAC, middleware guards, policy engine)
+- What roles and permissions exist? Where are they defined?
+- How do tokens flow between frontend and backend?
+
+**Artifact output:** PROC- or DEC- artifact for auth per service.
+
+### S8. Glossary and disambiguation
+
+Collect terms, acronyms, and tribal language encountered during S1-S7.
+
+- What acronyms appear in the codebase? What do they stand for?
+- What terms have domain-specific meanings that differ from common usage?
+- What terms are ambiguous across services? (same word, different meaning)
+- What naming conventions are used? (for endpoints, tables, config keys, etc.)
+
+**Artifact output:** GLOSSARY- artifact per service.
 
 ---
 
-## Phase B -- Boundaries (5 questions)
+## Scuba — How does it behave and connect?
 
-6. What data flows into this system and from where?
-7. What data flows out and to where?
-8. What are the agreed-upon contracts at each boundary?
-9. Which boundaries are formal (API specs, schemas) vs informal (conventions, tribal knowledge)?
-10. Where do boundary failures cause the most pain?
+Requires domain knowledge from the user via guided Q&A. Code can partially answer these, but the "why" and "what matters" come from the user.
+
+### C1. Entity lifecycle states and transitions
+
+For each core entity identified in S3:
+
+- What are the possible states/statuses?
+- What triggers each transition?
+- Are transitions enforced in code or by convention?
+- What side effects occur on transition? (notifications, events, downstream updates)
+- What transitions are irreversible?
+
+**Artifact output:** PROC- artifact per core entity lifecycle.
+
+### C2. Critical workflows end-to-end
+
+Trace the key user-facing and system-to-system workflows.
+
+- What are the critical workflows? (e.g., "annotator completes a reading," "new study is ingested")
+- For each: what is the step-by-step flow from trigger to completion?
+- Where can each workflow fail? What happens when it does?
+- What retry or recovery mechanisms exist?
+
+**Artifact output:** PROC- artifact per critical workflow.
+
+### C3. Cross-service data flows and contracts
+
+Requires service groupings from init.
+
+- What data flows between services? In what format and transport? (REST, events, shared DB, file drops)
+- What contracts exist at each boundary? Formal (API specs, proto files) or informal (convention)?
+- Where do services share entities, schemas, or database tables?
+- What happens when a dependency is down?
+
+**Artifact output:** CON- artifact per service pair boundary.
+
+### C4. Error handling and failure modes
+
+- Where does error handling matter most?
+- What are the known failure modes? (timeout, data inconsistency, partial writes)
+- What monitoring or alerting exists?
+- What are the operational runbooks or incident patterns?
+
+**Artifact output:** RISK- artifact per service or shared risk.
+
+### C5. Decisions and constraints
+
+- What were the significant architectural decisions? What drove them?
+- What constraints shaped the design? (regulatory, legacy, team size, timeline)
+- What trade-offs were made? What was explicitly deferred?
+
+**Artifact output:** DEC- artifact per significant decision.
 
 ---
 
-## Phase C -- Data (5 questions)
+## Deep — Why is it this way?
 
-11. What are the core domain entities and how do they relate?
-12. Which entities are owned by this system vs referenced from others?
-13. What are the key state machines or lifecycle transitions?
-14. Where does data transformation happen (ETL, mapping, enrichment)?
-15. What data consistency guarantees exist (or do not)?
+Exhaustive, line-by-line investigation of critical areas. The user directs where to go deep. 5+ Key Facts per artifact with precise source citations.
 
----
+### D1. Critical path tracing
 
-## Phase D -- Behavior (5 questions)
+- Trace the complete execution path for a critical operation, function by function.
+- Map every module that materially affects runtime behavior.
+- Identify implicit dependencies, side effects, and edge cases.
+- Document exact line citations for every claim.
 
-16. What are the critical user-facing workflows?
-17. What are the critical system-to-system workflows?
-18. Where does error handling matter most?
-19. What retry and recovery mechanisms exist?
-20. What are the known performance bottlenecks or scaling limits?
+### D2. Technical debt and risk
 
----
+- What technical debt is acknowledged? Where is it documented vs. only known verbally?
+- What would break if the primary maintainer left?
+- What knowledge exists only in someone's head?
+- What parts of the system are fragile, under-tested, or poorly understood?
 
-## Phase E -- Decisions (4 questions)
+### D3. Pattern analysis
 
-21. What were the most significant architectural decisions and why?
-22. Which decisions are candidates for reversal or rethinking?
-23. What constraints drove the current design (regulatory, legacy, team size)?
-24. What technical debt is acknowledged but deferred?
-
----
-
-## Phase F -- Operations (5 questions)
-
-25. How is this system monitored and what alerts exist?
-26. What does the incident response process look like?
-27. What are the most common failure modes?
-28. How are schema migrations coordinated?
-29. What is the disaster recovery plan?
-
----
-
-## Phase G -- Gaps (4 questions)
-
-30. What do new team members struggle with most?
-31. What knowledge exists only in one person's head?
-32. What would break if the primary maintainer left?
-33. What questions does this system's documentation fail to answer?
+- What design patterns recur across the codebase? Are they consistent?
+- Where do patterns break or diverge? Why?
+- What anti-patterns exist? Are they intentional trade-offs or accidents?
 
 ---
 
@@ -76,8 +194,19 @@
 
 These rules modify the question set based on what the structural scan discovers:
 
-- **Multi-source systems:** Add boundary questions for each source pair. Phase B expands to cover every ingestion and emission point.
-- **Complex auth:** Add auth-specific questions under Phase D (e.g., "What are the authorization boundaries?", "How are roles and permissions modeled?").
-- **Event-driven architectures:** Add event flow questions under Phase D (e.g., "What events does this system publish?", "What are the ordering guarantees?").
-- **Simple or single-purpose systems:** Remove Phases E and F. Focus depth on Phases C and D where the real behavior lives.
-- **Always:** Skip questions already answered by existing artifacts in the vault. Do not re-ask what is already known.
+- **No API endpoints found:** Skip S4. The repo may be a library, CLI tool, or worker.
+- **No database found:** Skip S3. The service may be stateless or use external storage via another service.
+- **Single-source reef:** Skip C3 (cross-service contracts). Within-service questions in S1 simplify to just external dependencies.
+- **No event/async system detected:** Simplify S6 — skip async execution paths.
+- **Simple or single-purpose service:** Compress S1-S4. Fewer questions needed when there are only a few files.
+- **Always:** Skip questions already answered by existing artifacts. Do not re-ask what is already known.
+
+---
+
+## Triggerable Actions
+
+Some questions should trigger automated extraction rather than manual investigation:
+
+- **S3 (Data model) and S4 (API surface):** Trigger `/reef:extract` to generate reusable scripts and extract OpenAPI specs and ERD diagrams. During init, this runs as a separate step before question generation.
+- **S6 (Runtime architecture):** Read docker-compose files, Helm charts, and startup configs directly.
+- **S1 (System boundaries):** Read CLAUDE.md and README.md first — richest signal for service identity and boundaries.

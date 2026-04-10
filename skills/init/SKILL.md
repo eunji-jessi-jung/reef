@@ -128,13 +128,26 @@ Report results: files indexed per source, total count. If a source fails, warn a
 
 ---
 
-## Step 5 — Auto-generate discovery questions
+## Step 5 — Extract API specs and ERDs (optional)
+
+During the structural scan, if API frameworks or ORMs are detected in any source, offer to run extraction:
+
+> "I detected API frameworks and/or data models in some of your repos. I can generate OpenAPI specs and ERD diagrams now — this gives the snorkel pass concrete structural data to work with. Want me to run extraction? (You can always run `/reef:extract` later.)"
+
+- If yes: read `/Users/jessi/Projects/seaof-ai/reef/skills/extract/SKILL.md` and follow its instructions using the "Called from init" integration mode (skip context loading and re-indexing — init handles both). The extracted specs land in `sources/raw/`.
+- If no/skip: move on. Mention: "No problem. Run `/reef:extract` anytime to generate OpenAPI specs and ERD diagrams. The scripts it creates can be re-run whenever your codebase changes."
+
+If no API frameworks or ORMs are detected, skip this step silently.
+
+---
+
+## Step 6 — Auto-generate discovery questions
 
 This is the critical step. After indexing, generate a tailored question bank for each source based on what the structural scan reveals. These questions steer snorkel and later become the `/reef:test` north star.
 
 **How to generate questions:**
 
-1. Read `/Users/jessi/Projects/seaof-ai/reef/references/understanding-template.md` — the 33 baseline questions across 7 phases.
+1. Read `/Users/jessi/Projects/seaof-ai/reef/references/understanding-template.md` — the 35 baseline questions across 5 phases. For init/snorkel, focus on Phase 1-2 (ground-level and structural). Phase 3+ questions are for scuba and deep.
 
 2. For each source, do a quick structural scan:
    - Read `CLAUDE.md` first (if present), then `README.md` — these are the richest signal for what the repo is, which service or product it belongs to, and how it fits into the larger system. Extract the service/product identity.
@@ -202,7 +215,7 @@ Show the user the questions briefly — a numbered list, grouped by source. Do n
 
 ---
 
-## Step 6 — Auto-trigger snorkel
+## Step 7 — Auto-trigger snorkel
 
 Report: "Starting the snorkel pass..."
 
@@ -212,7 +225,7 @@ The snorkel pass will use the question bank you just generated to produce richer
 
 ---
 
-## Step 7 — Log
+## Step 8 — Log
 
 Run:
 ```bash
@@ -225,7 +238,7 @@ python3 /Users/jessi/Projects/seaof-ai/reef/scripts/reef.py log "Reef initialize
 
 - Curious Researcher voice. Present-participle narration: "Scaffolding the reef...", "Indexing source files...", "Generating discovery questions..."
 - No emojis. No exclamation marks.
-- Fast and automated. The user answered three questions and now watches things happen. Do not ask for input during steps 3-6.
+- Fast and automated. The user answered two questions (name, location), confirmed sources, and corrected service groupings. After that, do not ask for input — steps 5-7 run unattended.
 - When reporting the question bank, be brief. The user wants to see artifacts, not a wall of questions.
 
 ---
