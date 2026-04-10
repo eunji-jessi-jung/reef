@@ -24,6 +24,8 @@ Then print a compact orientation block:
 
 ```
 - Best with Opus (Sonnet works, but Opus finds richer connections)
+- Sweet spot: 3-15 repos that form one domain or team ecosystem
+  (Bigger org? One reef per team — not one reef for everything)
 - 3 quick questions from you, then full automation
 - ~10-15 min, ~50-80k tokens depending on codebase size
 - Output: draft artifacts + question bank in plain markdown

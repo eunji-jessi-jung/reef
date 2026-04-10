@@ -43,7 +43,13 @@ Then, in any project directory:
 
 ## Domain Boundaries
 
-One reef covers one ecosystem — services that talk to each other. Services that don't interact belong in separate reefs. When in doubt, start with one reef per team or domain.
+One reef covers one ecosystem — services that talk to each other. The sweet spot is **3-15 repos** that form a coherent domain. This is where Reef delivers the most value: complex enough that no one person holds the full picture, small enough that Reef can trace every cross-system connection.
+
+- **1-2 repos:** Reef works, but the code might be its own best documentation. Consider whether you need it.
+- **3-15 repos:** The goldilocks zone. Cross-service contracts, shared entities, and auth boundaries are where the real knowledge lives — and where it gets lost most often.
+- **15+ repos:** Split into multiple reefs by team or domain. Each reef should cover services that directly interact. Services that don't talk to each other belong in separate reefs.
+
+In a large org (hundreds of repos), the right unit is one reef per team or domain — not one reef for the whole org. A platform team's reef and a product team's reef are separate, each covering their own ecosystem.
 
 ## The Question Bank
 
