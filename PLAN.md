@@ -26,22 +26,64 @@ These users don't need to be taught what a schema is — they need help extracti
 
 ---
 
-## The Multi-Repo Problem
+## Scope & Multi-Source Design
 
-Reef's core value is multi-service discovery — cross-system contracts are the "aha" moment. But Claude Code opens in one directory at a time.
+**Reef works best when it maps to one domain.** A domain is a bounded ecosystem of services that work together — like "CSG data ecosystem" or "payments platform." A reef should never bleed across domain boundaries. If your org has two distinct ecosystems, those are two separate reefs.
 
-**Three usage patterns:**
+Within a domain, Reef is designed for multi-source analysis. The more services you include, the more valuable the output — cross-system contracts (CON- artifacts) are the "aha" moment, and they only appear when Reef can see both sides of a boundary.
+
+**Guidance to users during init:** "Reef works best when you include all the services in a domain. Think of it as one knowledge layer for one ecosystem. If you have services that don't talk to each other, they probably belong in separate reefs."
+
+### Where the reef lives
+
+A reef is a directory. The user names it. It sits alongside or above the source repos it documents.
+
+```
+~/Projects/
+├── csg-reef/              # The reef — named by user (this IS the knowledge repo)
+│   ├── artifacts/
+│   ├── sources/
+│   ├── .reef/
+│   ├── index.md
+│   └── log.md
+├── cdm/                   # Source repo
+├── ctl/                   # Source repo
+├── rdp/                   # Source repo
+└── daip/                  # Source repo
+```
+
+reef-init asks:
+- **What should this reef be called?** → becomes the directory name (e.g., `csg-reef`, `payments-reef`, or any name the user wants)
+- **Where should it live?** → default: a new directory in cwd. User can specify any path.
+- **What sources does it cover?** → paths to source repos. Can be relative or absolute.
+
+### Multi-source patterns
 
 | Pattern | Setup | Best for |
 |---------|-------|----------|
-| **Monorepo / parent dir** | Open Claude Code at a parent directory containing multiple service repos | Teams with monorepo or co-located repos |
-| **Single-repo, merge later** | Create a reef per repo, then run `/reef-merge` to combine | Distributed teams, repos on different machines |
-| **Single-repo with external paths** | reef-init accepts absolute paths to other repos as additional sources | Quick setup when all repos are local |
+| **Co-located repos** | Open Claude Code at parent dir (e.g., `~/Projects/`), reef lives alongside source repos | Most common. All repos on one machine. |
+| **Single-repo start, merge later** | Create a reef per repo, then `/reef-merge` to combine into a domain-level reef | Distributed teams, or when you want to start small. |
+| **External paths** | reef-init accepts absolute paths to repos anywhere on the filesystem | Repos in different locations. |
 
-reef-init explicitly handles wiki location and source scoping:
-- **Where does the reef live?** Default: cwd. Alternative: external path.
-- **What sources does it cover?** Default: cwd only. Can add absolute paths to external repos.
-- For single-repo reefs, Claude notes that cross-system contracts will be limited and suggests `/reef-merge` later.
+### Merging reefs
+
+`/reef-merge` (v1.1) combines single-scope reefs into a domain-level reef. The merged reef lives in a parent directory — the same place a multi-source reef would have lived if you'd started there.
+
+```
+# Before merge: two separate reefs
+~/Projects/cdm/cdm-reef/        # reef for CDM only
+~/Projects/ctl/ctl-reef/        # reef for CTL only
+
+# After merge: domain-level reef
+~/Projects/csg-reef/            # merged reef covering CDM + CTL
+├── artifacts/                  # all artifacts from both reefs
+├── sources/
+└── .reef/
+```
+
+After merge, Reef scans for cross-system boundaries and proposes CON- artifacts that were invisible in the single-repo reefs.
+
+**Key constraint:** the wiki structure (IDs, source refs, frontmatter) is designed to make merging possible from day one. reef-init sets up each reef so it can be merged later without restructuring.
 
 ---
 
@@ -51,7 +93,12 @@ reef-init explicitly handles wiki location and source scoping:
 reef-plugin/
 ├── .claude-plugin/
 │   └── plugin.json                      # Plugin manifest (SessionStart hook for pyyaml)
-├── README.md                            # Installation + usage + philosophy
+├── README.md                            # Installation + quick start
+├── docs/
+│   ├── philosophy.md                    # Where Reef came from and why it works this way
+│   ├── guide.md                         # How to use Reef properly
+│   ├── artifact-types.md                # The 8 types, when to use each, examples
+│   └── design.md                        # Visual identity (palette, ✱, typography)
 ├── skills/
 │   ├── reef-init/
 │   │   └── SKILL.md                     # Bootstrap wiki structure
@@ -69,6 +116,8 @@ reef-plugin/
 │   │   └── SKILL.md                     # Validation + freshness check + text-rendered report
 │   ├── reef-test/
 │   │   └── SKILL.md                     # Test your reef (question bank)
+│   ├── reef-obsidian/
+│   │   └── SKILL.md                     # Open reef in Obsidian
 │   └── reef-merge/
 │       └── SKILL.md                     # Merge single-repo reefs (v1.1)
 ├── scripts/
@@ -263,7 +312,12 @@ Before writing to disk:
 ### `/reef-init` — Bootstrap
 
 1. Check if `.reef/` already exists → report or offer reset
-2. **Scope the reef:** project name, wiki location (default: cwd), source directories (default: cwd, can add external repo paths). Single-repo note: suggest `/reef-merge` later.
+2. **Scope the reef:**
+   - **Name:** "What should this reef be called?" → becomes the directory name (e.g., `csg-reef`, `payments-reef`)
+   - **Location:** "Where should it live?" → default: new directory in cwd. User can specify any path.
+   - **Sources:** "What codebases does it cover?" → paths to source repos. Encourage multi-source: "Reef works best when you include all services in a domain — that's how it discovers cross-system contracts."
+   - **Domain boundary guidance:** "Think of this reef as one knowledge layer for one ecosystem. Services that don't talk to each other probably belong in separate reefs."
+   - If single-source: "You can always create reefs for other services and merge them later with `/reef-merge`."
 3. Run `reef.py init <path>` → scaffold 3-zone structure
 4. Run `reef.py index` → walk sources, hash files, build source-index.json
 5. Ask about organizational context → create registry files:
@@ -452,6 +506,20 @@ Gaps to explore:
   RDP has no PROC- artifacts — run /reef-deep on rdp:src/flows/
 ```
 
+### `/reef-obsidian` — Open in Obsidian
+
+Opens a reef wiki in Obsidian for graph visualization and browsing.
+
+1. Ask which vault to open:
+   - Default: the reef in the current directory (if `.reef/` exists)
+   - Alternative: user provides a path to any other reef
+2. Check if Obsidian is installed (look for `obsidian://` URI scheme support)
+3. Open the reef directory as an Obsidian vault: `obsidian://open?path=<reef-root>`
+4. If Obsidian is not installed, fall back to opening the directory in Finder/file manager
+5. On first open, suggest: "Enable the Graph View and Dataview plugins for the best experience. Your artifacts are already wikilinked — the graph should light up immediately."
+
+This is a small skill, but it closes the loop between creation and visualization. The reef is Obsidian-ready from the first artifact.
+
 ### `/reef-merge` — Combine Reefs (v1.1)
 
 Merges single-repo reefs into a multi-system reef.
@@ -465,13 +533,17 @@ Merges single-repo reefs into a multi-system reef.
 
 **Deferred to v1.1** — the wiki structure (IDs, source refs, frontmatter) is designed to make merging possible from day one.
 
-### `/reef-source` — Extract Raw Specs from Code (v1.1)
+### `/reef-source` — Generate Raw Specs + Ingest Docs (v1.1)
 
-1. OpenAPI extraction: scan for FastAPI/Flask/Express routes → `sources/raw/{service}/openapi.json`
-2. ERD/schema extraction: scan for SQLAlchemy/Django/Prisma models → `sources/raw/{service}/schema.md`
-3. Ingest user-provided docs: PRDs, SRDs, architecture docs → `sources/docs/`
+Doesn't ship a generic extractor — instead, Claude reads the user's codebase, identifies the framework, and writes a bespoke extraction script.
 
-Raw evidence files, not artifacts. SCH- and API- artifacts *interpret* them.
+1. **Detect framework:** Claude reads the codebase to identify the stack (FastAPI? Django? Express? Prisma? SQLAlchemy?)
+2. **Generate extraction script:** Claude writes a small, tailored script for that specific stack (e.g., a 20-line Python script that imports the FastAPI app and dumps `app.openapi()`, or a script that reflects SQLAlchemy metadata into an ERD)
+3. **User reviews and runs the script** — Claude doesn't run it blindly
+4. **Output lands in `sources/raw/{service}/`** (openapi.json, schema.md, etc.)
+5. **Ingest user-provided docs:** User points to PRDs, SRDs, architecture docs, wiki exports → copy to `sources/docs/` with metadata
+
+Raw evidence files, not artifacts. SCH- and API- artifacts *interpret* them — adding business rules, usage patterns, deprecation status.
 
 ---
 
@@ -506,6 +578,104 @@ The enforceable rulebook. 8 types, 7 relationships, frontmatter schema, field or
 
 ### `references/templates/*.md`
 8 templates (System, Schema, API, Process, Decision, Glossary, Contract, Risk). Each includes required frontmatter with placeholders, required body sections, `## Related` template, and notes on what this type captures.
+
+---
+
+## Documentation — `docs/`
+
+Four pages. Not a manual — a philosophy and a guide. Written in the Curious Researcher voice. Designed with the ocean depth palette.
+
+### `docs/philosophy.md` — Where Reef Came From
+
+The origin story and the methodology it encodes.
+
+- **The problem:** Documentation is either auto-generated (shallow, stale) or hand-written (deep, but nobody maintains it). Neither works at scale.
+- **The experiment:** One PM built a structured knowledge repository for a 4-system ecosystem by hand — spending weekends and nights writing artifacts, tracing every claim to source code, marking gaps explicitly. The result was genuinely valuable. But the process didn't scale.
+- **The insight:** "AI found the answers. I asked the questions." The AI can read code and produce structurally correct output. But it can't know which gaps are dangerous, which ambiguities cause real problems, or which boundaries matter most. That part requires a human who knows the domain.
+- **The method:** Progressive depth. Start with what the code tells you (snorkel). Deepen with what only a human can guide (scuba). Go exhaustive on what matters most (deep). Every claim traces to evidence or to an explicit unknown.
+- **The three foundational questions:** How do you keep it from going stale? How do you know it's true? How does someone find what they need?
+- **Why structured > freeform:** 8 artifact types aren't arbitrary — they map to the questions PMs actually ask. "How does this system work?" (SYS-). "What do these two systems agree on?" (CON-). "What should I be worried about?" (RISK-). Structure makes the wiki queryable by agents and navigable by humans.
+
+### `docs/guide.md` — How to Use Reef
+
+Practical guidance. Not a reference — a way of thinking.
+
+- **The 3-step start:** `/reef-init` → `/reef-snorkel` → `/reef-scuba`. That's it. Everything else is "when you need it."
+- **When to snorkel:** First contact with a codebase. You want to see what's there. No questions, no friction.
+- **When to scuba:** You have drafts and want to go deeper. You know the domain and can tell Claude what it's getting wrong. This is where the real knowledge gets built.
+- **When to deep-dive:** A critical system where shallow reading misses the real behavior. You want line-by-line tracing.
+- **Domain boundaries:** One reef = one ecosystem. If services don't talk to each other, they're separate reefs. Include everything that does talk.
+- **The question bank:** Seed it early. "What questions do you need this wiki to answer?" These become the north star — `/reef-test` tells you whether the wiki is actually useful.
+- **Keeping it alive:** Run `/reef-update` when source code changes. Run `/reef-health` to see what's aging. The reef is a living thing, not a deliverable.
+- **Opening in Obsidian:** `/reef-obsidian` — see the knowledge graph, browse with wikilinks, query with Dataview.
+
+### `docs/artifact-types.md` — The 8 Types
+
+One page per type with: what it captures, when to create one, what a good example looks like, common mistakes. Not a schema reference (that's in `references/artifact-contract.md`) — a guide for understanding when each type is the right tool.
+
+### `docs/design.md` — Visual Identity
+
+The ocean depth design system. This applies to the docs, the README, the seaof.ai site, and eventually Reef Desktop.
+
+**Palette (v2):**
+
+| Name | Hex | Use |
+|------|-----|-----|
+| Abyss | `#0A1628` | Backgrounds, deepest layer |
+| Midnight | `#0F2035` | Card/panel backgrounds |
+| Deep | `#162D4A` | Elevated surfaces |
+| Current | `#1E3A5F` | Interactive elements, borders |
+| Drift | `#2B5278` | Secondary text, muted elements |
+| Surface | `#7D93AD` | Body text, icons |
+| Foam | `#B8C9DB` | Headings, emphasis |
+| Coral | `#F04E42` | Accent — source citations, warnings, the one warm color |
+
+**The ✱ (Heavy Asterisk, U+2731):** Reef's logo mark. Used as health indicator (fresh/aging/stale by opacity), empty state watermark, and brand mark.
+
+**Typography:**
+- Display/headings: serif stack (Iowan Old Style, Palatino, Georgia) — tight line-height (1.10-1.14), negative letter-spacing
+- Body: system sans-serif — open line-height (1.47)
+- Data/metadata: monospace (SF Mono, Cascadia Code)
+
+**Health by fading, not coloring:** Fresh = full opacity. Aging = faded. Stale = nearly invisible. No traffic lights. The reef doesn't turn red — it fades.
+
+**Principle:** Beautiful and calm. Like a terminal app that happens to have depth.
+
+---
+
+## Docs Site — `reef.seaof.ai`
+
+The plugin's `docs/` directory is the source of truth. The site renders those same markdown files with the ocean depth design system applied. One source, two outputs.
+
+**Platform:** Mintlify. Deploys from the plugin repo. Custom domain `reef.seaof.ai`. (When seaof.ai ships more products, migrate to `seaof.ai/reef` with subdirectory routing. For now, subdomain is the fastest path.)
+
+**Purpose:** Users discover Reef here *before* installing. The site is the pitch; the bundled docs are the reference. Same content, different framing — the site leads with "why" and ends with a one-line install command.
+
+**Pages:**
+
+| Page | What it does | Maps to |
+|------|-------------|---------|
+| Landing | "What is Reef?" — hook, demo walkthrough (snorkel → scuba → Obsidian graph), install command | `docs/philosophy.md` (adapted) |
+| Philosophy | The origin story, the methodology, the three foundational questions | `docs/philosophy.md` |
+| Guide | 3-step start, when to use each depth mode, domain boundaries, question bank, keeping it alive | `docs/guide.md` |
+| Artifact Types | The 8 types — what each captures, when to use it, what good looks like | `docs/artifact-types.md` |
+
+**Design:** Ocean depth palette applied as Mintlify custom CSS. Dark background (Abyss), Foam headings, Surface body text, Coral accents on links and callouts. ✱ as favicon and header mark. Serif headings, sans body, mono for code.
+
+**Config:**
+
+```
+reef-plugin/
+├── docs/
+│   ├── philosophy.md
+│   ├── guide.md
+│   ├── artifact-types.md
+│   └── design.md              # Design system spec (internal reference, not rendered on site)
+├── mintlify.json               # Site config, navigation, custom domain
+└── ...
+```
+
+**Deployment:** Mintlify watches the repo. Push to main → site updates. Custom domain via `reef.seaof.ai` CNAME.
 
 ---
 
@@ -545,14 +715,24 @@ The enforceable rulebook. 8 types, 7 relationships, frontmatter schema, field or
 ### Phase 5: Test + Polish (~1 hour)
 
 18. Write `skills/reef-test/SKILL.md`
-19. Write `README.md` (installation, usage, philosophy, privacy note)
-20. End-to-end test: init → snorkel → scuba → update → health → test
+19. Write `skills/reef-obsidian/SKILL.md`
+20. Write `docs/philosophy.md`, `docs/guide.md`, `docs/artifact-types.md`, `docs/design.md`
+21. Write `README.md` (quick start, links to docs)
+22. End-to-end test: init → snorkel → scuba → update → health → test → obsidian
 
-### Phase 6: v1.1 Skills (post-MVP)
+### Phase 6: Docs Site (~2 hours)
 
-21. Write `skills/reef-merge/SKILL.md`
-22. Write `skills/reef-source/SKILL.md`
-23. Test merge with 2 separate reefs → verify CON- artifacts at boundaries
+23. Configure `mintlify.json` — navigation, custom domain, dark theme with ocean depth palette
+24. Adapt `docs/philosophy.md` into a landing page (hook + demo walkthrough + install)
+25. Apply custom CSS: Abyss background, Foam headings, Coral accents, serif/sans/mono stacks, ✱ favicon
+26. Set up `reef.seaof.ai` CNAME → deploy via Mintlify
+27. Verify: site renders, pages navigate, install command works, design feels right
+
+### Phase 7: v1.1 Skills (post-MVP)
+
+28. Write `skills/reef-merge/SKILL.md`
+29. Write `skills/reef-source/SKILL.md`
+30. Test merge with 2 separate reefs → verify CON- artifacts at boundaries
 
 ---
 
@@ -566,7 +746,7 @@ The enforceable rulebook. 8 types, 7 relationships, frontmatter schema, field or
 6. **Test your reef:** seed questions → verify grounding and gap detection
 7. **Update detects changes:** modify source → verify affected artifacts flagged and updated
 8. **Cross-project portability:** full flow on unfamiliar codebase → nothing assumes specific structure
-9. **Obsidian compatibility:** open in Obsidian → graph view, Dataview queries work
+9. **Obsidian compatibility:** `/reef-obsidian` opens vault → graph view shows connected nodes → Dataview queries work on frontmatter
 10. **Text reports render:** health and test produce readable Unicode graphics in terminal
 
 ---
@@ -599,7 +779,7 @@ The enforceable rulebook. 8 types, 7 relationships, frontmatter schema, field or
 ## Roadmap
 
 ### v1.0 — Plugin MVP
-8 skills (init, snorkel, scuba, deep, artifact, update, health, test). 8 artifact types, 7 relationships, 3-zone wiki. Scripts layer for mechanical operations. Text-rendered reports. Obsidian-compatible.
+9 skills (init, snorkel, scuba, deep, artifact, update, health, test, obsidian). 8 artifact types, 7 relationships, 3-zone wiki. Scripts layer for mechanical operations. Text-rendered reports. Obsidian-native from day one.
 
 ### v1.1 — Multi-Repo + Raw Specs
 `/reef-merge` for combining reefs. `/reef-source` for OpenAPI/ERD extraction and doc ingestion. Git-based freshness diffing. Dependency tracking via source-artifact-map.
@@ -634,7 +814,9 @@ Reef skills read source code and pass contents to Claude for analysis.
 
 **Why scripts + LLM, not LLM alone?** File hashing, change detection, schema validation, index rebuilding — these are deterministic. Scripts are faster, cheaper, and more reliable. The LLM focuses on what requires intelligence: interpreting code, generating artifacts, answering questions.
 
-**Why 8 MVP skills?** Each has distinct behavior. Snorkel suppresses questions; scuba is built on them; deep traces paths; update fixes staleness; health reports without changing. Separate skills keep context size manageable.
+**Why 9 MVP skills?** Each has distinct behavior. Snorkel suppresses questions; scuba is built on them; deep traces paths; update fixes staleness; health reports without changing; obsidian closes the loop to visualization. Separate skills keep context size manageable.
+
+**Why "one reef = one domain"?** A reef that bleeds across unrelated ecosystems produces noisy contracts and confusing relationships. Clear domain boundaries make every artifact more meaningful. Merge lets you start small and combine later.
 
 **Why source snapshots?** Cannot be backfilled. Enables the entire freshness/lint/update story. Cheap (~20 lines per artifact).
 
