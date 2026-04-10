@@ -17,6 +17,38 @@ Read these reference files before starting:
 
 ---
 
+## Step 0 — Welcome
+
+Before anything else, orient the user. This may be their first time hearing about Reef.
+
+Print the following (adapt naturally, but hit these points):
+
+```
+    ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~
+    ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─
+
+                ~ reef ~
+     structured knowledge from source code
+
+    source code  →  questions  →  artifacts
+         ↑                            |
+         └────── update cycle ────────┘
+```
+
+Then print a compact orientation block:
+
+```
+- Best with Opus (Sonnet works, but Opus finds richer connections)
+- 3 quick questions from you, then full automation
+- ~10-15 min, ~50-80k tokens depending on codebase size
+- Output: draft artifacts + question bank in plain markdown
+- After init: /reef:scuba to deepen, /reef:feed to add docs
+```
+
+Do not ask for confirmation. Just present this and move to Step 1.
+
+---
+
 ## Step 1 — Check for an existing reef
 
 Look for a `.reef/` directory in the current working directory and in any path the user provides.
@@ -36,16 +68,22 @@ Ask these one at a time. Keep it tight.
 
 **Location:** "Where should it live?" — default: new directory in cwd. User can specify any path.
 
-**Sources:** "What codebases does it cover? Give me the paths."
+**Sources:** Auto-discover git repos in the current working directory. Scan two levels deep for directories containing `.git/`.
 
-Accept one or more paths. For each path:
+Present what you find:
 
-1. **Verify it exists.** If not, warn and skip.
-2. **Check if it is a git repo** (has `.git/` inside). If yes, use it directly.
-3. **If it is NOT a git repo**, look one level down for subdirectories that contain `.git/`. If found, use those as the actual sources instead of the parent. Report: "Found N git repos inside {path}: {repo-a}, {repo-b}, ..."
-4. **If no .git found at either level**, use the path as-is but warn: "No git repo detected at {path} — using it as a plain directory source."
+> "I found N codebases in {cwd}:
+>
+> - repo-a
+> - repo-b
+> - repo-c
+> - ...
+>
+> Cover all of them, or exclude some?"
 
-Then:
+The user either confirms ("all" / "yes" / "looks right") or excludes ("skip repo-c and repo-d"). Apply their answer.
+
+- If no git repos are found in cwd, ask: "No codebases found here. What directory should I scan?"
 - Multiple sources: "Good — that is how Reef discovers cross-system contracts."
 - Single source: "You can add more later."
 
@@ -97,20 +135,48 @@ This is the critical step. After indexing, generate a tailored question bank for
 **How to generate questions:**
 
 1. Read `/Users/jessi/Projects/seaof-ai/reef/references/understanding-template.md` — the 33 baseline questions across 7 phases.
+
 2. For each source, do a quick structural scan:
+   - Read `CLAUDE.md` first (if present), then `README.md` — these are the richest signal for what the repo is, which service or product it belongs to, and how it fits into the larger system. Extract the service/product identity.
    - Read the 2-level directory tree
-   - Read README.md if present
    - Identify entry points, routers, models, config, tests
    - Note the tech stack
-3. Adapt the baseline questions to what you found. For each source, generate 8-15 specific questions. The questions should be:
+
+3. **Infer service groupings.** Try to group repos into services using these signals, in order:
+   - **Explicit identity** from CLAUDE.md/README.md (e.g., "authentication service for the CTL ecosystem")
+   - **Shared name prefixes or postfixes** (e.g., `ctl-authenticator` + `ctl-data-server` + `ctl-office`, or `ai-platform-foundation` + `ai-platform-foundation-admin`)
+   - **Acronym expansion** — check if a repo prefix is an acronym of another repo's full name (e.g., `rdp-prefect-gateway` prefix "rdp" matches "research-data-pipeline" initials R.D.P.). This is a strong grouping signal.
+   - **Shared infrastructure** references (e.g., same Keycloak realm, same database, same API gateway, both using Prefect)
+
+   Then present your best guess as a table and ask the user to confirm or correct — this is the **one** question you ask between indexing and snorkel:
+
+   > I found N repos. I think they group like this:
+   >
+   > | Service          | Repos                                    |
+   > |------------------|------------------------------------------|
+   > | {best guess}     | repo-1, repo-2                           |
+   > | {best guess}     | repo-3, repo-4, repo-5                   |
+   > | ?                | repo-6 (no clear signal)                 |
+   >
+   > Any corrections?
+
+   The user responds in natural language (e.g., "Case Curator is actually called CDM. repo-6 belongs to CTL. The last two are RDP."). Parse their corrections, apply them, and save the service groupings to `.reef/project.json` under a `services` field:
+   ```json
+   {
+     "services": [
+       { "name": "CTL", "full_name": "Closing the Loop", "sources": ["ctl-authenticator", "ctl-data-server", "ctl-office", "radiology-annotation-frontend"] }
+     ]
+   }
+   ```
+
+4. Adapt the baseline questions to what you found. For each source, generate 8-15 specific questions. The questions should be:
    - **Concrete, not generic.** Instead of "What are the core entities?", write "What are the core entities in service-a and how do Study, Case, and Image relate?" if you see those model names.
    - **Answerable from code.** Every question should be something Claude can investigate by reading source files. Skip questions about ops/monitoring/team structure — those need human input and belong in scuba.
    - **Ordered by discovery priority:** System boundaries first, then data model, then behavior, then cross-system contracts.
 
-4. For multi-source reefs, add cross-system questions:
-   - "What data flows from {source-a} to {source-b}?"
-   - "What contracts exist between {source-a} and {source-b}?"
-   - "Where do {source-a} and {source-b} share entities or schemas?"
+5. For multi-source reefs, add cross-system questions. Use the service groupings from step 3:
+   - **Within a service** (repos that belong to the same product): "How do {repo-a} and {repo-b} divide responsibilities within {service}?" / "What is the frontend-backend contract between {repo-a} and {repo-b}?"
+   - **Across services**: "What data flows from {service-a} to {service-b}?" / "What contracts exist between {service-a} and {service-b}?" / "Where do {service-a} and {service-b} share entities or schemas?"
 
 **Question format:**
 

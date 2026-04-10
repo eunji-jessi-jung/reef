@@ -28,7 +28,7 @@ These users don't need to be taught what a schema is — they need help extracti
 
 ## Scope & Multi-Source Design
 
-**Reef works best when it maps to one domain.** A domain is a bounded ecosystem of services that work together — like "CSG data ecosystem" or "payments platform." A reef should never bleed across domain boundaries. If your org has two distinct ecosystems, those are two separate reefs.
+**Reef works best when it maps to one domain.** A domain is a bounded ecosystem of services that work together — like "a multi-service ecosystem" or "payments platform." A reef should never bleed across domain boundaries. If your org has two distinct ecosystems, those are two separate reefs.
 
 Within a domain, Reef is designed for multi-source analysis. The more services you include, the more valuable the output — cross-system contracts (CON- artifacts) are the "aha" moment, and they only appear when Reef can see both sides of a boundary.
 
@@ -40,20 +40,20 @@ A reef is a directory. The user names it. It sits alongside or above the source 
 
 ```
 ~/Projects/
-├── csg-reef/              # The reef — named by user (this IS the knowledge repo)
+├── acme-reef/             # The reef — named by user (this IS the knowledge repo)
 │   ├── artifacts/
 │   ├── sources/
 │   ├── .reef/
 │   ├── index.md
 │   └── log.md
-├── cdm/                   # Source repo
-├── ctl/                   # Source repo
-├── rdp/                   # Source repo
-└── daip/                  # Source repo
+├── service-a/             # Source repo
+├── service-b/             # Source repo
+├── service-c/             # Source repo
+└── service-d/             # Source repo
 ```
 
 reef-init asks:
-- **What should this reef be called?** → becomes the directory name (e.g., `csg-reef`, `payments-reef`, or any name the user wants)
+- **What should this reef be called?** → becomes the directory name (e.g., `acme-reef`, `payments-reef`, or any name the user wants)
 - **Where should it live?** → default: a new directory in cwd. User can specify any path.
 - **What sources does it cover?** → paths to source repos. Can be relative or absolute.
 
@@ -71,11 +71,11 @@ reef-init asks:
 
 ```
 # Before merge: two separate reefs
-~/Projects/cdm/cdm-reef/        # reef for CDM only
-~/Projects/ctl/ctl-reef/        # reef for CTL only
+~/Projects/service-a/service-a-reef/   # reef for Service-A only
+~/Projects/service-b/service-b-reef/   # reef for Service-B only
 
 # After merge: domain-level reef
-~/Projects/csg-reef/            # merged reef covering CDM + CTL
+~/Projects/acme-reef/                  # merged reef covering Service-A + Service-B
 ├── artifacts/                  # all artifacts from both reefs
 ├── sources/
 └── .reef/
@@ -164,11 +164,11 @@ python3 ${CLAUDE_PLUGIN_ROOT}/scripts/reef.py <command> [options]
 // reef.py diff
 {
   "sources": {
-    "cdm": { "new": 1, "updated": 3, "renamed": 0, "deleted": 0, "unchanged": 338 }
+    "service-a": { "new": 1, "updated": 3, "renamed": 0, "deleted": 0, "unchanged": 338 }
   },
-  "affected_artifacts": ["SYS-CDM", "SCH-CDM-STUDY"],
+  "affected_artifacts": ["SYS-INGEST", "SCH-INGEST-ORDER"],
   "details": [
-    { "file": "src/models/study.py", "classification": "updated", "old_hash": "a1b2...", "new_hash": "d4e5..." }
+    { "file": "src/models/order.py", "classification": "updated", "old_hash": "a1b2...", "new_hash": "d4e5..." }
   ]
 }
 ```
@@ -238,42 +238,42 @@ Reef's core IP — the structured schema that makes the output valuable.
 
 | Type | Meaning | Example |
 |------|---------|---------|
-| `parent` | Detail of a higher-level artifact | PROC-CDM-CASE → SYS-CDM |
-| `depends_on` | Assumes another artifact's content | SCH-CDM-STUDY → SCH-CDM-IMAGE |
-| `refines` | Adds peer-level detail | API-CDM-REST → SYS-CDM |
-| `constrains` | Governs/limits another | DEC-AUTH-PATTERN → API-CDM-AUTH |
+| `parent` | Detail of a higher-level artifact | PROC-INGEST-ORDER → SYS-INGEST |
+| `depends_on` | Assumes another artifact's content | SCH-INGEST-ORDER → SCH-INGEST-ITEM |
+| `refines` | Adds peer-level detail | API-INGEST-REST → SYS-INGEST |
+| `constrains` | Governs/limits another | DEC-AUTH-PATTERN → API-INGEST-AUTH |
 | `supersedes` | Replaces a previous artifact | DEC-NEW-AUTH → DEC-OLD-AUTH |
-| `feeds` | Sends data to another system | SYS-CDM → SYS-RDP |
-| `integrates_with` | Bidirectional exchange | SYS-CDM ↔ SYS-CTL |
+| `feeds` | Sends data to another system | SYS-INGEST → SYS-PIPELINE |
+| `integrates_with` | Bidirectional exchange | SYS-INGEST ↔ SYS-LABEL |
 
 ### Frontmatter Schema
 
 ```yaml
 ---
-id: "SYS-CDM"
+id: "SYS-INGEST"
 type: "system"
-title: "CSG Data Manager"
-domain: "cdm"                         # free-form string
+title: "Acme Ingest"
+domain: "ingest"                      # free-form string
 status: "draft"                       # draft | active | deprecated
 last_verified: 2026-04-09            # unquoted ISO date
-freshness_note: "review when case model or auth changes"
+freshness_note: "review when order model or auth changes"
 freshness_triggers:
-  - "src/models/study.py"
-  - "src/services/case.py"
+  - "src/models/order.py"
+  - "src/services/workflow.py"
 known_unknowns:
-  - "Image deduplication logic unclear"
+  - "Item deduplication logic unclear"
 tags:
-  - cdm
+  - ingest
   - system
 aliases:
-  - "CDM"
+  - "Ingest"
 relates_to:
   - type: "feeds"
-    target: "[[SYS-RDP]]"
+    target: "[[SYS-PIPELINE]]"
 sources:
   - category: "implementation"
     type: "github"
-    ref: "src/models/study.py"
+    ref: "src/models/order.py"
 notes: ""
 ---
 ```
@@ -290,9 +290,9 @@ Every artifact (except Glossary) includes individually verifiable assertions lin
 
 ```markdown
 ## Key Facts
-- CDM owns breast and chest radiology case management → `src/services/case.py`
-- Case status transitions enforced at the service layer → `src/services/case.py:L45-89`
-- CDM does NOT own annotation workflows (that's CTL) → verified with CTL team
+- Acme Ingest owns order processing and workflow management → `src/services/workflow.py`
+- Order status transitions enforced at the service layer → `src/services/workflow.py:L45-89`
+- Acme Ingest does NOT own labeling workflows (that's Acme Label) → verified with labeling team
 ```
 
 Each fact can be independently verified during lint. When a source file changes, only facts referencing it need re-verification.
@@ -313,7 +313,7 @@ Before writing to disk:
 
 1. Check if `.reef/` already exists → report or offer reset
 2. **Scope the reef:**
-   - **Name:** "What should this reef be called?" → becomes the directory name (e.g., `csg-reef`, `payments-reef`)
+   - **Name:** "What should this reef be called?" → becomes the directory name (e.g., `acme-reef`, `payments-reef`)
    - **Location:** "Where should it live?" → default: new directory in cwd. User can specify any path.
    - **Sources:** "What codebases does it cover?" → paths to source repos. Encourage multi-source: "Reef works best when you include all services in a domain — that's how it discovers cross-system contracts."
    - **Domain boundary guidance:** "Think of this reef as one knowledge layer for one ecosystem. Services that don't talk to each other probably belong in separate reefs."
@@ -387,7 +387,7 @@ Maximum depth on a specific area.
 
 1. User directs Claude to a specific system, subsystem, or topic
 2. Read entire directories, trace execution paths, map every function that materially affects runtime
-3. Dense Key Facts with precise line citations (e.g., `src/services/case.py:L45-89`)
+3. Dense Key Facts with precise line citations (e.g., `src/services/workflow.py:L45-89`)
 4. 5+ facts per artifact minimum
 5. User provides domain framing that reshapes how Claude interprets the code
 
@@ -413,9 +413,9 @@ Re-indexes all sources, detects what changed, updates affected artifacts in one 
 3. Present change summary:
    ```
    Source changes since last update:
-     cdm: 3 updated, 1 new, 0 deleted
-     ctl: 0 changes
-   Affected artifacts: SYS-CDM, SCH-CDM-STUDY, PROC-CDM-CASE-LIFECYCLE
+     service-a: 3 updated, 1 new, 0 deleted
+     service-b: 0 changes
+   Affected artifacts: SYS-INGEST, SCH-INGEST-ORDER, PROC-INGEST-ORDER-LIFECYCLE
    ```
 4. For each affected artifact, re-read changed sources and propose updates
 5. User accepts/skips each (same validation as `/reef-artifact`)
@@ -459,9 +459,9 @@ Reef Health — my-project                         2026-04-10
 
 Sources          Files    Seen   Deep   Freshness
 ─────────────────────────────���───────────────────
-cdm              342      287    94     ████████░░ aging
-ctl              218      180    42     ██████████ fresh
-rdp              156       38     0     ██░░░░░░░░ stale
+service-a        342      287    94     ████████░░ aging
+service-b        218      180    42     ██████████ fresh
+service-c        156       38     0     ██░░░░░░░░ stale
 
 Artifacts        Total    Fresh  Aging  Stale  Errors
 ─────────────────────────────────────────────────
@@ -495,15 +495,15 @@ Test Your Reef — my-project                      2026-04-10
 
 Progress: ████████████░░░░░░░░ 7/12 questions answered
 
- ✓  How does CDM handle case state transitions?      → PROC-CDM-CASE-LIFECYCLE
- ✓  What data flows from CDM to RDP?                 → CON-CDM-RDP-FEED, SYS-RDP
- ~  How does auth work across services?               → partial: SYS-DAIP (shallow)
+ ✓  How does Acme Ingest handle order state transitions?  → PROC-INGEST-ORDER-LIFECYCLE
+ ✓  What data flows from Ingest to Pipeline?             → CON-INGEST-PIPELINE-FEED, SYS-PIPELINE
+ ~  How does auth work across services?                   → partial: SYS-AUTH (shallow)
  ✗  What's the disaster recovery plan?
  ✗  How do schema migrations get coordinated?
 
 Gaps to explore:
-  DAIP is shallow — 3 Key Facts, needs /reef-scuba
-  RDP has no PROC- artifacts — run /reef-deep on rdp:src/flows/
+  Auth service is shallow — 3 Key Facts, needs /reef-scuba
+  Pipeline has no PROC- artifacts — run /reef-deep on service-c:src/flows/
 ```
 
 ### `/reef-obsidian` — Open in Obsidian
@@ -590,7 +590,7 @@ Four pages. Not a manual — a philosophy and a guide. Written in the Curious Re
 The origin story and the methodology it encodes.
 
 - **The problem:** Documentation is either auto-generated (shallow, stale) or hand-written (deep, but nobody maintains it). Neither works at scale.
-- **The experiment:** One PM built a structured knowledge repository for a 4-system ecosystem by hand — spending weekends and nights writing artifacts, tracing every claim to source code, marking gaps explicitly. The result was genuinely valuable. But the process didn't scale.
+- **The experiment:** One PM built a structured knowledge repository for a multi-service ecosystem by hand — spending weekends and nights writing artifacts, tracing every claim to source code, marking gaps explicitly. The result was genuinely valuable. But the process didn't scale.
 - **The insight:** "AI found the answers. I asked the questions." The AI can read code and produce structurally correct output. But it can't know which gaps are dangerous, which ambiguities cause real problems, or which boundaries matter most. That part requires a human who knows the domain.
 - **The method:** Progressive depth. Start with what the code tells you (snorkel). Deepen with what only a human can guide (scuba). Go exhaustive on what matters most (deep). Every claim traces to evidence or to an explicit unknown.
 - **The three foundational questions:** How do you keep it from going stale? How do you know it's true? How does someone find what they need?
@@ -643,42 +643,6 @@ The ocean depth design system. This applies to the docs, the README, the seaof.a
 
 ---
 
-## Docs Site — `reef.seaof.ai`
-
-The plugin's `docs/` directory is the source of truth. The site renders those same markdown files with the ocean depth design system applied. One source, two outputs.
-
-**Platform:** Mintlify. Deploys from the plugin repo. Custom domain `reef.seaof.ai`. (When seaof.ai ships more products, migrate to `seaof.ai/reef` with subdirectory routing. For now, subdomain is the fastest path.)
-
-**Purpose:** Users discover Reef here *before* installing. The site is the pitch; the bundled docs are the reference. Same content, different framing — the site leads with "why" and ends with a one-line install command.
-
-**Pages:**
-
-| Page | What it does | Maps to |
-|------|-------------|---------|
-| Landing | "What is Reef?" — hook, demo walkthrough (snorkel → scuba → Obsidian graph), install command | `docs/philosophy.md` (adapted) |
-| Philosophy | The origin story, the methodology, the three foundational questions | `docs/philosophy.md` |
-| Guide | 3-step start, when to use each depth mode, domain boundaries, question bank, keeping it alive | `docs/guide.md` |
-| Artifact Types | The 8 types — what each captures, when to use it, what good looks like | `docs/artifact-types.md` |
-
-**Design:** Ocean depth palette applied as Mintlify custom CSS. Dark background (Abyss), Foam headings, Surface body text, Coral accents on links and callouts. ✱ as favicon and header mark. Serif headings, sans body, mono for code.
-
-**Config:**
-
-```
-reef-plugin/
-├── docs/
-│   ├── philosophy.md
-│   ├── guide.md
-│   ├── artifact-types.md
-│   └── design.md              # Design system spec (internal reference, not rendered on site)
-├── mintlify.json               # Site config, navigation, custom domain
-└── ...
-```
-
-**Deployment:** Mintlify watches the repo. Push to main → site updates. Custom domain via `reef.seaof.ai` CNAME.
-
----
-
 ## Implementation Phases
 
 ### Phase 1: Scaffold + Script + References (~3 hours)
@@ -720,13 +684,12 @@ reef-plugin/
 21. Write `README.md` (quick start, links to docs)
 22. End-to-end test: init → snorkel → scuba → update → health → test → obsidian
 
-### Phase 6: Docs Site (~2 hours)
+### Phase 6: Package + Ship (~1 hour)
 
-23. Configure `mintlify.json` — navigation, custom domain, dark theme with ocean depth palette
-24. Adapt `docs/philosophy.md` into a landing page (hook + demo walkthrough + install)
-25. Apply custom CSS: Abyss background, Foam headings, Coral accents, serif/sans/mono stacks, ✱ favicon
-26. Set up `reef.seaof.ai` CNAME → deploy via Mintlify
-27. Verify: site renders, pages navigate, install command works, design feels right
+23. Create `.claude-plugin/marketplace.json` for plugin distribution
+24. Push repo to GitHub (seaof-ai/reef)
+25. Submit to Anthropic plugin marketplace (claude.ai/settings/plugins/submit)
+26. Verify: users can install via `/plugin marketplace add seaof-ai/reef`
 
 ### Phase 7: v1.1 Skills (post-MVP)
 
@@ -786,6 +749,9 @@ reef-plugin/
 
 ### v1.2 — Richer Discovery
 Pattern artifact type. Process archetype detection. Proactive doc source integration. Obsidian plugin.
+
+### v1.3 — Docs Site (if needed)
+`reef.seaof.ai` on Mintlify with ocean depth design system. Only if marketplace listing + README aren't enough for discovery.
 
 ### v2.0 — Reef Desktop
 Visual layer reading wiki output. Ocean depth design system (seven-blue palette + coral, ✱ logo). Coverage indicators, session summaries, artifact ribbon.
