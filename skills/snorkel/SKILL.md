@@ -202,6 +202,12 @@ Then suggest next steps:
 - `/reef:deep` — exhaustive line-by-line tracing of a specific area.
 - `/reef:test` — see how well the reef answers your questions right now."
 
+If the key gaps include things that existing documents could answer (architecture decisions, deployment topology, authorization models, business rules), add:
+
+"Some of these gaps might be answered by existing docs — PRDs, architecture specs, design docs, SRS. If you have any, `/reef:feed` can pull them in and the next pass will use them."
+
+Only mention this if the gaps are genuinely the kind that docs would fill. Do not mention it if the gaps are code-level (e.g., "unclear error handling in module X").
+
 ---
 
 ## Voice and Personality
