@@ -35,7 +35,54 @@ Walk up from cwd looking for a `.reef/` directory. That parent is the reef root.
 - Scan `artifacts/` for existing artifacts — read their frontmatter to understand current coverage.
 - **Read `sources/apis/` and `sources/schemas/`** for extracted API specs and ERDs. These are the full specs from `/reef:source`, organized by service. API specs are always `openapi.json` (valid OpenAPI 3.x). ERDs are `schema.md` with Mermaid diagrams and field tables. Use them to ask deeper, more targeted questions — they contain the complete endpoint maps and data models that structural scanning alone cannot capture. If these directories are empty, note this and suggest the user run `/reef:source` first for better results.
 
-### 3. Determine entry point
+### 3. Spec-driven artifact upgrade (automated)
+
+Before any Socratic questioning, upgrade snorkel-draft artifacts using the full specs from source extraction. This step is fully automated — no user input needed.
+
+**When to run:** Only if `sources/apis/` or `sources/schemas/` contain extracted specs. If both directories are empty, skip to Step 4.
+
+**For each API- artifact with `status: draft` and `freshness_note: "snorkel-depth scan"`:**
+
+1. Find the matching spec: `sources/apis/{service}/{sub}/openapi.json`.
+2. Read the full OpenAPI spec — extract all endpoints, methods, request/response schemas, auth requirements, tags.
+3. Rewrite the artifact body with complete endpoint documentation:
+   - Group endpoints by tag/resource
+   - Include request parameters and response schemas
+   - Note auth requirements per endpoint
+   - List error codes where specified
+4. Update frontmatter:
+   - `freshness_note: "upgraded from extracted OpenAPI spec"`
+   - `known_unknowns`: remove items answered by the spec, keep others
+   - Add `openapi.json` to `sources` list
+5. Follow the full artifact contract (field order, validation, determinism rules).
+6. Run post-write commands (snapshot, rebuild-index, rebuild-map, log "Upgraded {artifact-id}").
+
+**For each SCH- artifact with `status: draft` and `freshness_note: "snorkel-depth scan"`:**
+
+1. Find the matching schema: `sources/schemas/{service}/{sub}/schema.md`.
+2. Read the full ERD — extract all tables/collections, fields, types, relationships.
+3. Rewrite the artifact body with complete data model documentation:
+   - All tables with full field lists
+   - Primary keys, foreign keys, indexes
+   - Relationship cardinalities
+   - Mermaid ERD diagram
+4. Update frontmatter same as API artifacts.
+5. Run post-write commands.
+
+**After all upgrades:** Report what was upgraded:
+
+```
+Upgraded N artifacts from extracted specs:
+- api-cdm-breast: 47 endpoints (was 12 in draft)
+- sch-cdm-breast: 23 tables (was 8 in draft)
+- ...
+
+Ready for Socratic deepening. Where would you like to start?
+```
+
+Then proceed to Step 4 (entry point determination) for the interactive session.
+
+### 4. Determine entry point
 
 One of three modes based on what the user says:
 
@@ -58,7 +105,7 @@ One of three modes based on what the user says:
 2. Skip questions already answered by existing artifacts.
 3. Present the adapted question list and let the user choose where to start.
 
-### 4. Guided priorities
+### 5. Guided priorities
 
 Follow these priorities loosely, not rigidly:
 
@@ -67,7 +114,7 @@ Follow these priorities loosely, not rigidly:
 - Warn (do not block) if a PROC- is proposed before its parent SYS- exists.
 - Propose cross-system CON- artifacts whenever system boundaries emerge.
 
-### 5. Question-by-question flow
+### 6. Question-by-question flow
 
 For each question or topic:
 
@@ -92,7 +139,7 @@ Proactively suggest questions that code cannot answer:
 
 Prioritize unanswered questions from `.reef/questions.json`.
 
-### 6. Artifact creation
+### 7. Artifact creation
 
 When creating or updating an artifact, follow the full artifact contract.
 
@@ -134,7 +181,7 @@ notes:
 
 Status can be "draft" or "active" depending on confidence from the conversation.
 
-### 7. Post-write commands
+### 8. Post-write commands
 
 Run these in order after each artifact file is written and accepted:
 
@@ -147,7 +194,7 @@ python3 /Users/jessi/Projects/seaof-ai/reef/scripts/reef.py log "Created <artifa
 
 Use "Updated" instead of "Created" in the log message when updating an existing artifact.
 
-### 8. Session management
+### 9. Session management
 
 - Track which questions have been covered in this session.
 - At natural pauses, summarize progress: artifacts created or updated, questions answered, remaining gaps.
