@@ -205,7 +205,7 @@ The user responds in natural language. Parse their corrections, apply them, and 
 
 ## Step 8 — Auto-trigger snorkel and source
 
-Report: "Reef is set up. Starting discovery and source extraction..."
+Report: "Reef is set up. Starting discovery and source extraction in parallel — this will take about 10-15 minutes. You can grab a coffee while it runs."
 
 Run:
 ```bash
