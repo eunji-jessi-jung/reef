@@ -125,7 +125,7 @@ For each SCH- artifact (existing or planned), read the schema and extract every 
 
 ```
 Planned PROC- entity artifacts:
-- PROC-{SERVICE}-{ENTITY} ← entity {Entity} from SCH-{SERVICE}-{SUB}
+- PROC-{SERVICE}-{ENTITY}-LIFECYCLE ← entity {Entity} from SCH-{SERVICE}-{SUB}
   [has status field: yes/no] [API resource: yes/no]
 ```
 
@@ -169,7 +169,7 @@ Save the manifest to `.reef/scuba-manifest.json` with this structure:
   "generated_at": "ISO timestamp",
   "planned": [
     { "id": "API-PAYMENTS-GATEWAY", "type": "api", "source": "sources/apis/payments/gateway/openapi.json", "status": "new" },
-    { "id": "PROC-PAYMENTS-ORDER", "type": "process", "source": "sources/schemas/payments/gateway/schema.md", "entity": "Order", "status": "new" }
+    { "id": "PROC-PAYMENTS-ORDER-LIFECYCLE", "type": "process", "source": "sources/schemas/payments/gateway/schema.md", "entity": "Order", "status": "new" }
   ],
   "completed": [],
   "skipped": []
@@ -198,7 +198,7 @@ If the user wants to adjust scope, let them remove categories from the manifest 
 
 ## Step 3 — Phase 1: Automated Deepening
 
-No user input after confirmation. Work through the manifest systematically — every planned artifact must be addressed (completed or explicitly skipped with reason). Report progress as you go: "Writing API-PAYMENTS-GATEWAY (1/9 API artifacts)...", "Writing PROC-PAYMENTS-ORDER (3/24 entity artifacts)...".
+No user input after confirmation. Work through the manifest systematically — every planned artifact must be addressed (completed or explicitly skipped with reason). Report progress as you go: "Writing API-PAYMENTS-GATEWAY (1/9 API artifacts)...", "Writing PROC-PAYMENTS-ORDER-LIFECYCLE (3/24 entity artifacts)...".
 
 All Phase 1 artifacts are `status: "draft"`. Phase 2 can promote to `"active"` with user confirmation.
 
@@ -234,23 +234,23 @@ For each service with an extracted ERD in `sources/schemas/{service}/{sub}/schem
 
 ### 3.3 — Entity definition and lifecycle artifacts
 
-Generate a PROC- artifact for every core entity listed in the manifest. Work through the manifest's PROC- entity list systematically.
+Generate a PROC- artifact for every core entity listed in the manifest. Work through the manifest's PROC- entity list systematically. **Do not skip entities.**
+
+**Naming:** `PROC-{SERVICE}-{ENTITY}-LIFECYCLE` (e.g., `PROC-CDM-CASE-LIFECYCLE`, `PROC-CTL-JOB-LIFECYCLE`). The `-LIFECYCLE` suffix distinguishes entity artifacts from workflow or pattern PROC- artifacts.
+
+**Template:** Follow `/Users/jessi/Projects/seaof-ai/reef/references/templates/process-entity-lifecycle.md` exactly. It defines the full structure: Purpose, Key Facts, Definition (Fields table, Relationships, Creation), States (with Mermaid state diagram), and Related.
 
 For each core entity:
 
 1. **Read the source code** — find the model/schema definition file in the source repo. Read it to understand fields, relationships, validators, and business logic.
-2. **Write the PROC- artifact** with these sections:
-   - **Definition**: what the entity is, what it represents in the domain, why it exists
-   - **Fields**: key fields with types and what they mean (not a raw dump — focus on fields that carry business meaning, FK relationships, computed fields, and anything non-obvious)
-   - **Relationships**: how this entity connects to others (parent, children, associations). Reference the related PROC- artifacts.
-   - **Creation**: how instances are created (API endpoint, background job, migration, external sync)
-   - **Lifecycle** (if the entity has status/state fields):
-     - Status enum values (from code constants or Enum definitions)
-     - Transition map: search source code for where status is set/updated → map "from → to" transitions
-     - Side effects on transitions (events, downstream updates, notifications) if visible in code
-     - Which transitions appear irreversible
-   - **Known unknowns**: generously flag gaps — "Business rules governing X need user confirmation", "Transition triggers not fully traced from code", etc.
-3. **Output:** Set `freshness_note: "scuba-depth entity definition from code scan"`. For entities with lifecycle: `"scuba-depth entity definition + lifecycle from code scan"`.
+2. **Write the PROC- artifact** following the template. Key requirements:
+   - **Fields table**: focus on business-meaningful fields, not a raw dump
+   - **Relationships**: reference other PROC-{SERVICE}-{ENTITY}-LIFECYCLE artifacts
+   - **States section with Mermaid `stateDiagram-v2`**: only if the entity has status/state fields. Search source code for where status is set/updated to map transitions.
+   - **Known unknowns**: generously flag gaps
+3. **Output:** Set `freshness_note: "scuba-depth entity definition + lifecycle from code scan"`.
+
+**Entity completeness check:** After generating all entity PROC- artifacts for a service, compare the list against the schema's entity list. If any core entity was skipped, go back and generate it. Common misses: entities in non-primary sub-apps, entities only referenced via FK but not directly queried, entities with short model files.
 
 **For junction/config tables** (entities that didn't pass the core entity filter): document them in the `## Relationships` section of their parent entity's PROC- artifact. Don't generate a separate artifact.
 
@@ -302,25 +302,20 @@ For each service's source code:
 
 ### 3.7 — Service contracts (all pairs)
 
-Generate or update a CON- artifact for **every service pair** in the manifest. For N services, there are N×(N-1)/2 pairs — all must be covered.
+Generate or update a CON- artifact for **every service pair** in the manifest. For N services, there are N×(N-1)/2 pairs — all must be covered. **Do not skip pairs.**
+
+**Naming:** `CON-{SERVICE-A}-{SERVICE-B}` (alphabetical order, e.g., `CON-CDM-CTL`, `CON-CDM-DAIP`).
+
+**Template:** Follow `/Users/jessi/Projects/seaof-ai/reef/references/templates/contract-service-pair.md` exactly. It defines the full structure: Parties, Key Facts, Integration Map (endpoint table per direction), Data Flow, Coupling Assessment table, Failure Behavior, and a "No Integration Detected" fallback section.
 
 For each service pair:
 
-1. Search both services' source code for evidence of interaction:
-   - HTTP client calls to the other service (URL construction, imported client modules, environment variables referencing the other service's URLs)
-   - Generated API clients from the other service's spec
-   - Shared schema imports or common model files
-   - Event/message passing between the services
-   - Shared database access
-2. If interaction evidence is found:
-   - Count call sites and categorize by direction (A→B vs B→A)
-   - Document the contract: what data flows, in what format, through what transport
-   - Note auth requirements at the boundary
-   - Rate coupling: heavy / moderate / light
-3. If NO interaction evidence is found:
-   - Still create the CON- artifact documenting: "No direct integration detected. These services appear to operate independently."
-   - This is valuable — it confirms the absence of coupling, not just that we didn't look.
+1. Search both services' source code for evidence of interaction (HTTP clients, generated API clients, shared schemas, events, shared DB access).
+2. If interaction found: fill the Integration Map, Data Flow, Coupling Assessment, and Failure Behavior sections per the template.
+3. If NO interaction found: use the "No Integration Detected" section from the template. This confirms architectural separation.
 4. **Output:** CON- artifact per pair. Update existing ones if they exist from snorkel.
+
+**Completeness check:** After all contracts are written, count them. For N services, you must have exactly N×(N-1)/2 CON- artifacts. If any are missing, go back and generate them.
 
 After all pairs, add a summary heat map table to the briefing:
 
