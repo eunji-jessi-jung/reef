@@ -190,13 +190,37 @@ For each repo/app:
    - `swag --version` (for Go API extraction)
    - `node --version` / `npx --version` (for Node repos)
 
-3. **Early skip decision.** If runtime extraction is structurally impossible for a repo, skip straight to tier 3/4 without burning attempts:
+3. **Prompt for missing tools.** If a tool is missing but would unlock runtime extraction, tell the user what to install. These are the project's own build tools — the user would need them to develop in that repo anyway. Present all missing tools at once so the user can install them in one go:
+
+   ```
+   Some tools are missing that would enable live-truth extraction:
+
+   poetry  — needed for 4 repos (payments/gateway, payments/ledger, orders, ...)
+             Install: pip install poetry  (or: pipx install poetry)
+
+   swag    — needed for 1 repo (platform/auth, Go API docs)
+             Install: go install github.com/swaggo/swag/cmd/swag@latest
+
+   Want to install them now, or continue without? (I'll fall back to
+   existing specs for repos that need the missing tools.)
+   ```
+
+   **Wait for the user's response.** If they install the tools, re-check availability and proceed with runtime extraction. If they decline, proceed with fallbacks — do not block.
+
+4. **Early skip decision.** If runtime extraction is structurally impossible for a repo AND the user declined to install tools, skip to tier 3/4 without burning attempts:
    - Go repo but no `go` or `swag` installed → skip to tier 3
    - Java/Kotlin repo but no JVM → skip to tier 3
    - Broken venv AND no `uv` or `poetry` to fix it → skip to tier 3
-   - Report: "Skipping runtime extraction for platform/auth — Go project but `swag` is not installed on this machine."
+   - Report: "Skipping runtime extraction for platform/auth — Go project, `swag` not installed."
 
-4. **Fix broken venvs (if tools available).** If a venv is broken and `uv` is available:
+5. **Fix broken venvs (if tools available).** If a venv is broken, fix it using the best available tool:
+
+   **Preferred: `poetry install`** — if poetry is available, this is the most reliable path. It reads pyproject.toml and poetry.lock, installs everything (including transitive deps), and handles private registries if configured:
+   ```bash
+   cd <app-dir> && poetry install --no-root
+   ```
+
+   **Fallback: `uv`** — if poetry is not available but uv is:
    ```bash
    # uv available as command:
    cd <app-dir> && uv venv --python 3.13 --clear
@@ -216,6 +240,12 @@ For each repo/app:
    ```
    **Important:** Skip private/internal packages during pip install — they'll be handled by stubs. To identify private packages, look for packages that fail to resolve from PyPI or that reference internal registries in `pyproject.toml`.
 
+6. **Determine the run command.** Based on what's available, choose the best way to execute Python in the project's environment:
+   - **`poetry run python`** — best option. Poetry activates the correct venv and sets up the environment. Use this when poetry is available.
+   - **`.venv/bin/python`** — good option. Direct venv access. Use when poetry is not available but the venv is healthy (or was just fixed).
+   - **`uv run python`** — works when uv manages the project.
+   - **bare `python3`** — last resort. Almost never works for projects with dependencies.
+
 Report the pre-flight results:
 
 ```
@@ -223,10 +253,10 @@ Pre-flight checks:
 
 | Service  | App              | Venv    | Pkg Mgr         | Runtime possible? |
 |----------|------------------|---------|-----------------|-------------------|
-| Payments | gateway          | broken  | uv (as module)  | yes (after fix)   |
-| Payments | ledger           | broken  | uv (as module)  | yes (after fix)   |
+| Payments | gateway          | broken  | poetry          | yes (poetry install) |
+| Payments | ledger           | broken  | poetry          | yes (poetry install) |
 | Orders   | —                | healthy | poetry          | yes               |
-| Platform | auth             | n/a     | go (missing)    | no — skip to t3   |
+| Platform | auth             | n/a     | go+swag         | yes               |
 | Platform | analytics        | n/a     | n/a (fork)      | no — skip to t3   |
 ```
 
@@ -266,13 +296,33 @@ Report: "Replaying cached recipe for orders..."
 
 This tier tries to import the application and dump its API schema at runtime.
 
-**Step 0 — Check for an existing generation script.** Many repos include a script like `scripts/generate_api_schema.py` or `scripts/generate_openapi.py`. Search for these first:
-```bash
-find <repo-root> -name "generate_api*" -o -name "generate_openapi*" -o -name "openapi_gen*" | head -5
-```
-If found, run it using the repo's package manager (e.g., `poetry run python scripts/generate_api_schema.py`). If it succeeds and produces an OpenAPI spec, use that. This is the most reliable runtime path because the repo maintainers already solved the dependency and env var problems.
+**Step 0 — Check for an existing generation script.** This is the single most reliable runtime path — the repo maintainers already solved the dependency and env var problems. Always check this first.
 
-**Step 1 — Use the package manager's run command.** Always wrap Python commands with the detected package manager. Never use bare `python3` — it won't have the dependencies installed.
+Search in these locations (in order):
+```bash
+# Per-app scripts (for monorepos):
+ls <app-dir>/scripts/generate_api_schema.py 2>/dev/null
+ls <app-dir>/scripts/generate_openapi.py 2>/dev/null
+
+# Repo-root scripts:
+ls <repo-root>/scripts/generate_api_schema.py 2>/dev/null
+ls <repo-root>/scripts/generate_openapi.py 2>/dev/null
+
+# Broader search if nothing found:
+find <repo-root> -name "generate_api*" -o -name "generate_openapi*" -o -name "openapi_gen*" 2>/dev/null | head -5
+```
+
+If found, run it with the project's package manager and the same env vars / PYTHONPATH / stubs you would use for inline extraction:
+```bash
+# Example for a monorepo app with a generate script:
+PYTHONPATH=<stubs>:<app-src>:<lib-paths> poetry run python scripts/generate_api_schema.py
+```
+
+The script typically writes `openapi.json` to its own directory or to stdout. Check both — if a file appeared in the app directory, use that. If stdout has JSON output, use that.
+
+If the script succeeds, use its output and move to the next repo. Do not attempt inline extraction.
+
+**Step 1 — Use the package manager's run command.** Always wrap Python commands with the run command determined in Step 1.5 (pre-flight). Prefer `poetry run python` when poetry is available — it handles venv activation, PYTHONPATH, and env vars more reliably than direct venv access. Never use bare `python3`.
 
 **FastAPI / Flask-RESTX / Flask-Smorest:**
 ```bash
