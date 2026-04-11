@@ -337,16 +337,22 @@ Use the Agent tool to run these concurrently. Both are fully automated — no us
 
 When both complete:
 
-1. **Run the health report** to give the user an immediate visual summary of coverage:
+1. **Run the snorkel audit** to check for missing mandatory artifacts:
+   ```bash
+   python3 ${CLAUDE_PLUGIN_ROOT}/scripts/reef.py audit --reef <reef-root>
+   ```
+   If the audit reports missing artifacts, launch targeted agents to fill the gaps. Each missing artifact is independent — launch one agent per gap, all in a single message. The agents should read the snorkel skill's Step 4 for artifact format, then generate the specific missing artifact.
+
+2. **Run the health report** to give the user an immediate visual summary of coverage:
    ```bash
    python3 ${CLAUDE_PLUGIN_ROOT}/scripts/reef.py lint --reef <reef-root>
    python3 ${CLAUDE_PLUGIN_ROOT}/scripts/reef.py diff --reef <reef-root>
    ```
    Render the health report using the same Unicode box-drawing format defined in the snorkel skill's wrap-up step. This is the payoff moment after a long wait — the user needs the visual satisfaction of seeing coverage bars and artifact counts.
 
-2. **Summarize** results from both agents (artifacts created, API specs extracted, questions answered).
+3. **Summarize** results from both agents (artifacts created, API specs extracted, questions answered).
 
-3. **Suggest next steps:** `/reef:scuba` to deepen, `/reef:feed` to add docs, `/reef:test` to check coverage.
+4. **Suggest next steps:** `/reef:scuba` to deepen, `/reef:feed` to add docs, `/reef:test` to check coverage.
 
 ---
 

@@ -911,6 +911,395 @@ def cmd_gap(args) -> None:
     })
 
 
+# ---------------------------------------------------------------------------
+# Subcommand: audit
+# ---------------------------------------------------------------------------
+
+
+def cmd_audit(args) -> None:
+    """Check snorkel output against mandatory minimum artifact requirements."""
+    reef = find_reef_root(args.reef)
+    project = read_json(reef / ".reef" / "project.json")
+    artifacts = collect_artifacts(reef)
+
+    services = project.get("services", [])
+    if not services:
+        fail("No services configured in project.json. Run /reef:init first.")
+
+    # Build artifact lookup: uppercase ID -> frontmatter
+    existing = {}
+    for _, fm in artifacts:
+        aid = fm.get("id", "").upper()
+        existing[aid] = fm
+
+    # Also build prefix -> list of IDs for pattern matching
+    by_prefix_service = {}  # (prefix, service_name) -> [ids]
+    for aid in existing:
+        parts = aid.split("-", 2)
+        if len(parts) >= 2:
+            prefix = parts[0]
+            svc = parts[1]
+            by_prefix_service.setdefault((prefix, svc), []).append(aid)
+
+    service_names = [s["name"].upper() for s in services]
+    missing = []
+    present = []
+
+    # 1. Mandatory per-service: SYS, SCH, API, PROC-auth, GLOSSARY, RISK
+    for svc in services:
+        svc_upper = svc["name"].upper()
+
+        # SYS-
+        sys_id = f"SYS-{svc_upper}"
+        if sys_id in existing:
+            present.append({"id": sys_id, "type": "system", "status": "present"})
+        else:
+            missing.append({"id": sys_id, "type": "system", "service": svc["name"],
+                            "reason": "Every service must have a SYS- artifact"})
+
+        # SCH- (at least 1)
+        sch_ids = by_prefix_service.get(("SCH", svc_upper), [])
+        if sch_ids:
+            for sid in sch_ids:
+                present.append({"id": sid, "type": "schema", "status": "present"})
+        else:
+            missing.append({"id": f"SCH-{svc_upper}-*", "type": "schema", "service": svc["name"],
+                            "reason": "Every service must have at least one SCH- artifact"})
+
+        # API- (at least 1)
+        api_ids = by_prefix_service.get(("API", svc_upper), [])
+        if api_ids:
+            for aid_item in api_ids:
+                present.append({"id": aid_item, "type": "api", "status": "present"})
+        else:
+            missing.append({"id": f"API-{svc_upper}-*", "type": "api", "service": svc["name"],
+                            "reason": "Every service must have at least one API- artifact"})
+
+        # PROC-*-AUTH (any PROC containing AUTH for this service)
+        proc_ids = by_prefix_service.get(("PROC", svc_upper), [])
+        has_auth = any("AUTH" in pid for pid in proc_ids)
+        if has_auth:
+            auth_ids = [pid for pid in proc_ids if "AUTH" in pid]
+            for aid_item in auth_ids:
+                present.append({"id": aid_item, "type": "process-auth", "status": "present"})
+        else:
+            missing.append({"id": f"PROC-{svc_upper}-AUTH", "type": "process-auth", "service": svc["name"],
+                            "reason": "Every service must have a PROC- auth artifact"})
+
+        # GLOSSARY- per service
+        glossary_id = f"GLOSSARY-{svc_upper}"
+        if glossary_id in existing:
+            present.append({"id": glossary_id, "type": "glossary", "status": "present"})
+        else:
+            missing.append({"id": glossary_id, "type": "glossary", "service": svc["name"],
+                            "reason": "Every service must have a GLOSSARY- artifact"})
+
+        # RISK- per service
+        risk_ids = by_prefix_service.get(("RISK", svc_upper), [])
+        if risk_ids:
+            for rid in risk_ids:
+                present.append({"id": rid, "type": "risk", "status": "present"})
+        else:
+            missing.append({"id": f"RISK-{svc_upper}-KNOWN-GAPS", "type": "risk", "service": svc["name"],
+                            "reason": "Every service must have a RISK- artifact"})
+
+    # 2. Cross-service: CON- for all pairs
+    n = len(services)
+    expected_pairs = n * (n - 1) // 2
+    con_ids = [aid for aid in existing if aid.startswith("CON-")]
+    # Count service-pair CONs (exclude entity comparison CONs)
+    service_pair_cons = []
+    entity_cons = []
+    for cid in con_ids:
+        # Entity comparisons typically have "ENTITY" in the name
+        if "ENTITY" in cid:
+            entity_cons.append(cid)
+        else:
+            service_pair_cons.append(cid)
+
+    if len(service_pair_cons) >= expected_pairs:
+        for cid in service_pair_cons:
+            present.append({"id": cid, "type": "contract", "status": "present"})
+    else:
+        # Find which pairs are missing
+        existing_pairs = set()
+        for cid in service_pair_cons:
+            parts = cid.replace("CON-", "").split("-")
+            if len(parts) >= 2:
+                existing_pairs.add(tuple(sorted(parts[:2])))
+
+        for i in range(n):
+            for j in range(i + 1, n):
+                pair = tuple(sorted([services[i]["name"].upper(), services[j]["name"].upper()]))
+                if pair not in existing_pairs:
+                    missing.append({
+                        "id": f"CON-{pair[0]}-{pair[1]}",
+                        "type": "contract",
+                        "service": f"{pair[0]} × {pair[1]}",
+                        "reason": f"Service pair contract missing ({expected_pairs} pairs expected for {n} services)",
+                    })
+                else:
+                    present.append({"id": f"CON-{pair[0]}-{pair[1]}", "type": "contract", "status": "present"})
+
+    # 3. Unified glossary
+    unified_glossaries = [aid for aid in existing if aid.startswith("GLOSSARY-") and
+                          aid.replace("GLOSSARY-", "").split("-")[0] not in
+                          [s["name"].upper() for s in services]]
+    if unified_glossaries:
+        for gid in unified_glossaries:
+            present.append({"id": gid, "type": "glossary-unified", "status": "present"})
+    else:
+        missing.append({"id": "GLOSSARY-*-UNIFIED", "type": "glossary-unified",
+                        "reason": "Reef needs a unified cross-service glossary"})
+
+    # Summary
+    summary = {
+        "total_present": len(present),
+        "total_missing": len(missing),
+        "pass": len(missing) == 0,
+    }
+
+    # Group missing by type for readability
+    missing_by_type = {}
+    for m in missing:
+        missing_by_type.setdefault(m["type"], []).append(m)
+
+    emit({
+        "status": "ok",
+        "summary": summary,
+        "missing": missing,
+        "missing_by_type": {t: len(v) for t, v in missing_by_type.items()},
+        "present_count": len(present),
+    })
+
+
+# ---------------------------------------------------------------------------
+# Subcommand: manifest
+# ---------------------------------------------------------------------------
+
+
+def _extract_entities_from_schema(schema_path: Path) -> list[dict]:
+    """Extract entity names from a schema.md file. Returns list of {name, is_junction}."""
+    try:
+        text = schema_path.read_text(encoding="utf-8")
+    except Exception:
+        return []
+
+    entities = []
+    in_tables = False
+
+    # Patterns that indicate non-core entities (junction, lookup, derived, auxiliary)
+    NON_CORE_SUFFIXES = ("_data", "_link", "_alias", "_mv", "_event", "_summary", "_log")
+    NON_CORE_NAMES = {"ethnicity", "race", "gender", "country", "language", "timezone", "currency"}
+
+    for line in text.split("\n"):
+        stripped = line.strip()
+        if stripped.startswith("## Tables") or stripped.startswith("## Collections"):
+            in_tables = True
+            continue
+        if stripped.startswith("## ") and in_tables:
+            in_tables = False
+            continue
+        if in_tables and stripped.startswith("### "):
+            raw_name = stripped[4:].strip()
+            # Clean: strip parenthetical annotations like "ProjectDocument (CXRProject / DBTProject / MMGProject)"
+            clean_name = raw_name.split("(")[0].strip()
+            # Clean: take first name before " / " if multiple variants
+            clean_name = clean_name.split(" / ")[0].strip()
+
+            name_lower = clean_name.lower().replace(" ", "_")
+            is_junction = (
+                "__" in raw_name or
+                any(name_lower.endswith(suffix) for suffix in NON_CORE_SUFFIXES) or
+                name_lower in NON_CORE_NAMES or
+                name_lower.endswith("_flat_mv")  # materialized views
+            )
+            entities.append({"name": clean_name, "is_junction": is_junction})
+
+    return entities
+
+
+def cmd_manifest(args) -> None:
+    """Generate scuba manifest skeleton from project.json + extracted sources."""
+    reef = find_reef_root(args.reef)
+    project = read_json(reef / ".reef" / "project.json")
+    artifacts = collect_artifacts(reef)
+
+    services = project.get("services", [])
+    if not services:
+        fail("No services configured in project.json.")
+
+    existing_ids = set()
+    for _, fm in artifacts:
+        existing_ids.add(fm.get("id", "").upper())
+
+    planned = []
+
+    def plan(artifact_id: str, atype: str, **extra):
+        aid_upper = artifact_id.upper()
+        status = "update" if aid_upper in existing_ids else "new"
+        entry = {"id": artifact_id, "type": atype, "status": status}
+        entry.update(extra)
+        planned.append(entry)
+
+    # 1. API- from extracted specs
+    apis_dir = reef / "sources" / "apis"
+    if apis_dir.is_dir():
+        for spec_path in sorted(apis_dir.rglob("openapi.json")):
+            rel = spec_path.relative_to(apis_dir)
+            parts = list(rel.parts[:-1])  # e.g., ["cdm", "breast"]
+            if len(parts) >= 2:
+                svc, sub = parts[0].upper(), parts[1].upper()
+                aid = f"API-{svc}-{sub}"
+            elif len(parts) == 1:
+                aid = f"API-{parts[0].upper()}"
+            else:
+                continue
+            plan(aid, "api", source=str(spec_path.relative_to(reef)))
+
+    # 2. SCH- from extracted schemas
+    schemas_dir = reef / "sources" / "schemas"
+    all_entities_by_service = {}  # service_upper -> [(entity_name, schema_source)]
+    if schemas_dir.is_dir():
+        for schema_path in sorted(schemas_dir.rglob("schema.md")):
+            rel = schema_path.relative_to(schemas_dir)
+            parts = list(rel.parts[:-1])
+            if len(parts) >= 2:
+                svc, sub = parts[0].upper(), parts[1].upper()
+                aid = f"SCH-{svc}-{sub}"
+            elif len(parts) == 1:
+                aid = f"SCH-{parts[0].upper()}"
+            else:
+                continue
+            plan(aid, "schema", source=str(schema_path.relative_to(reef)))
+
+            # Extract entities for PROC- planning
+            entities = _extract_entities_from_schema(schema_path)
+            svc_key = parts[0].upper()
+            if svc_key not in all_entities_by_service:
+                all_entities_by_service[svc_key] = []
+            for ent in entities:
+                all_entities_by_service[svc_key].append({
+                    "name": ent["name"],
+                    "is_junction": ent["is_junction"],
+                    "schema_source": str(schema_path.relative_to(reef)),
+                })
+
+    # 3. PROC-entity lifecycles (core entities only)
+    for svc_upper, entities in all_entities_by_service.items():
+        core_entities = [e for e in entities if not e["is_junction"]]
+        for ent in core_entities:
+            # Normalize entity name: snake_case -> UPPER-CASE
+            ent_slug = ent["name"].upper().replace("_", "-")
+            aid = f"PROC-{svc_upper}-{ent_slug}-LIFECYCLE"
+            plan(aid, "process", entity=ent["name"],
+                 source=ent["schema_source"])
+
+    # 4. CON- service pairs (combinatorial)
+    n = len(services)
+    for i in range(n):
+        for j in range(i + 1, n):
+            a = services[i]["name"].upper()
+            b = services[j]["name"].upper()
+            pair = tuple(sorted([a, b]))
+            aid = f"CON-{pair[0]}-{pair[1]}"
+            plan(aid, "contract", source="cross-service")
+
+    # 5. RISK- per service
+    for svc in services:
+        aid = f"RISK-{svc['name'].upper()}-KNOWN-GAPS"
+        plan(aid, "risk", source="code-scan")
+
+    # 6. DEC- per service (placeholder — Claude fills in specifics)
+    for svc in services:
+        # Check if any DEC- exists for this service already
+        svc_upper = svc["name"].upper()
+        has_dec = any(eid.startswith(f"DEC-{svc_upper}") for eid in existing_ids)
+        if not has_dec:
+            aid = f"DEC-{svc_upper}-OBSERVABLE"
+            plan(aid, "decision", source="code-scan",
+                 note="Placeholder — Claude should replace with specific decisions found during analysis")
+
+    # 7. GLOSSARY- per service + source index
+    for svc in services:
+        aid = f"GLOSSARY-{svc['name'].upper()}"
+        plan(aid, "glossary", source="cross-artifact")
+    plan("GLOSSARY-SOURCE-INDEX", "glossary", source="cross-artifact")
+
+    # 8. PROC- flow catalogs (for services with pipeline/orchestration)
+    # Heuristic: check service descriptions for pipeline/orchestration keywords
+    pipeline_keywords = {"pipeline", "prefect", "celery", "airflow", "orchestrat", "worker", "job", "queue"}
+    for svc in services:
+        desc = (svc.get("description", "") or "").lower()
+        sources_str = " ".join(svc.get("sources", [])).lower()
+        if any(kw in desc or kw in sources_str for kw in pipeline_keywords):
+            aid = f"PROC-{svc['name'].upper()}-FLOW-CATALOG"
+            plan(aid, "process", source="code-scan",
+                 note="Flow catalog for pipeline/orchestration service")
+
+    # 9. SCH- per-collection (for document store services with 3+ collections)
+    for svc_upper, entities in all_entities_by_service.items():
+        # Check if any schema for this service mentions "Collections" (MongoDB/document store)
+        doc_store_entities = []
+        for ent in entities:
+            schema_text = ""
+            try:
+                schema_text = (reef / ent["schema_source"]).read_text(encoding="utf-8")
+            except Exception:
+                pass
+            if "## Collections" in schema_text and not ent["is_junction"]:
+                doc_store_entities.append(ent)
+
+        if len(doc_store_entities) >= 3:
+            for ent in doc_store_entities:
+                ent_slug = ent["name"].upper().replace("_", "-")
+                aid = f"SCH-{svc_upper}-COLLECTION-{ent_slug}"
+                plan(aid, "schema", entity=ent["name"],
+                     source=ent["schema_source"],
+                     note="Per-collection schema for document store")
+
+    # Deduplicate (same ID planned multiple times)
+    seen = set()
+    deduped = []
+    for entry in planned:
+        key = entry["id"].upper()
+        if key not in seen:
+            seen.add(key)
+            deduped.append(entry)
+
+    # Summary by type
+    by_type = {}
+    new_count = 0
+    update_count = 0
+    for entry in deduped:
+        by_type.setdefault(entry["type"], {"new": 0, "update": 0})
+        if entry["status"] == "new":
+            by_type[entry["type"]]["new"] += 1
+            new_count += 1
+        else:
+            by_type[entry["type"]]["update"] += 1
+            update_count += 1
+
+    manifest = {
+        "generated_at": now_iso(),
+        "planned": deduped,
+        "completed": [],
+        "skipped": [],
+    }
+
+    # Write manifest
+    write_json(reef / ".reef" / "scuba-manifest.json", manifest)
+
+    emit({
+        "status": "ok",
+        "total_planned": len(deduped),
+        "new": new_count,
+        "updates": update_count,
+        "by_type": by_type,
+        "manifest_path": str(reef / ".reef" / "scuba-manifest.json"),
+    })
+
+
 def cmd_log(args) -> None:
     reef = find_reef_root(args.reef)
     log_path = reef / "log.md"
@@ -987,6 +1376,16 @@ def main() -> None:
     p_inv.add_argument("--reef", default=None, help="Path to reef root")
     p_inv.add_argument("--artifacts-dir", default=None, help="Direct path to artifacts/ directory (for non-reef repos)")
     p_inv.set_defaults(func=cmd_inventory)
+
+    # audit
+    p_audit = sub.add_parser("audit", help="Check snorkel output against mandatory minimums")
+    p_audit.add_argument("--reef", default=None, help="Path to reef root")
+    p_audit.set_defaults(func=cmd_audit)
+
+    # manifest
+    p_manifest = sub.add_parser("manifest", help="Generate scuba manifest from project.json + extracted sources")
+    p_manifest.add_argument("--reef", default=None, help="Path to reef root")
+    p_manifest.set_defaults(func=cmd_manifest)
 
     # log
     p_log = sub.add_parser("log", help="Append entry to evolution log")

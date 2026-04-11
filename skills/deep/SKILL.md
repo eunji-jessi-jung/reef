@@ -25,9 +25,27 @@ Emphasis on what the code actually does versus what it appears to do: "The docst
 
 Walk up from cwd looking for a `.reef/` directory. That parent is the reef root. If not found, stop and tell the user to run `/reef:init` first.
 
-### 2. Load context
+### 2. Check readiness
+
+Deep assumes scuba-level artifacts already exist. Check before proceeding:
 
 - Read `.reef/project.json` to understand scope and source roots.
+- Check if `.reef/scuba-manifest.json` exists. If it does not, the reef has not been through scuba yet — stop and tell the user:
+  ```
+  This reef hasn't been through scuba yet. Deep builds on scuba-level
+  artifacts (SYS-, SCH-, API-, PROC-, CON-) — without them, a deep dive
+  would be starting from too shallow a foundation.
+
+  Run /reef:scuba first, then come back to /reef:deep for the areas
+  that need line-by-line tracing.
+  ```
+- If the manifest exists, check its completion status. If fewer than half the planned artifacts are complete, warn:
+  ```
+  Scuba is only partially complete (N/M artifacts). Consider finishing
+  scuba first — or if you want to deep-dive a specific area that already
+  has scuba coverage, tell me the target.
+  ```
+  If the user insists on proceeding despite the warning, allow it — they may have a good reason.
 - Scan `artifacts/` for existing artifacts — read their frontmatter to understand current coverage and what relates to the dive target.
 
 ### 3. User directs the dive

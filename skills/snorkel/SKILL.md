@@ -141,20 +141,45 @@ Report progress as you go: "Reading service-a's model layer — found 14 SQLAlch
 
 ## Step 4 — Generate artifacts
 
-Generate artifacts guided by what you learned. For each source, produce:
+Generate artifacts guided by what you learned. Every service has a **mandatory minimum set** — do not move to the next service until these are written.
 
-1. **SYS-** first — always. One per service. This is the entry point artifact. Use orientation question findings to write a rich overview with real boundaries, dependencies, and tech stack details.
-2. **SCH-** for major data models — use data question findings. Name actual entities, describe relationships, note lifecycle states. **If the source contains multiple independent apps with separate data models, generate one SCH- per app** (e.g., SCH-PAYMENTS-GATEWAY, SCH-PAYMENTS-LEDGER), not one combined schema artifact.
-3. **API-** for API surfaces — use behavior question findings. Group endpoints, note auth patterns, describe key request flows. **Same rule: one API- per independent app** if the source has multiple apps with separate API surfaces.
-4. **GLOSSARY-** if domain terms emerged that need definition.
-5. **CON-** for cross-system boundaries — use cross-system question findings. Name both parties, describe what flows between them, cite the client/server code.
-6. **PROC- runtime architecture** — if docker-compose, Helm, multiple entry points, or background workers are detected, generate a thin PROC- documenting the runtime topology: what processes run, what databases each connects to, sync vs async paths. 3-5 Key Facts. Only generate if the service has more than a single API server process.
-7. **PROC- auth patterns** — if JWT validation, RBAC decorators, OAuth config, API keys, or service accounts are found during Step 3 scan, generate a draft PROC- for the authentication/authorization approach: mechanism, enforcement point, identity provider. 3-5 Key Facts. This gives scuba a foundation to deepen.
-8. **RISK-** per service — during Step 3, count TODO/FIXME/HACK/XXX comments. If 3+ related signals are found, generate a RISK- artifact grouping them by theme (data integrity, auth gaps, error handling, tech debt). Severity always "medium" at snorkel depth. Template: `${CLAUDE_PLUGIN_ROOT}/references/templates/risk-service.md`.
-9. **DEC-** for observable decisions — when the scan reveals a non-obvious technology or architecture choice (e.g., dual database strategy, custom auth instead of a standard provider, specific queue system, sync-over-async), generate a stub DEC- with Context, Decision, and `known_unknowns: ["Rationale not available from code alone"]`. Scuba will deepen these.
-10. **GLOSSARY-{SERVICE}** per service — if a service has 5+ unique domain terms from Step 3, generate a per-service glossary in addition to the unified GLOSSARY-. Per-service glossaries are authoritative within their scope. Template: `${CLAUDE_PLUGIN_ROOT}/references/templates/glossary-service.md`.
+### Mandatory per-service artifacts (generate ALL of these)
 
-**Target: 5-10 artifacts per source.** For a 4-source reef, that means 20-40 artifacts total. Multi-app sources (monorepos with 3+ sub-apps) should generate 8-12 artifacts. Adjust based on codebase complexity — a trivial single-file service might only warrant 3, but most services warrant 6-8.
+1. **SYS-** — one per service, always. The entry point artifact. Use orientation question findings.
+2. **SCH-** — one per distinct data model. If the source has multiple independent apps with separate data models, generate one SCH- per app (e.g., SCH-PAYMENTS-GATEWAY, SCH-PAYMENTS-LEDGER). Even a thin draft with entity names and relationships is better than nothing — scuba will upgrade it from extracted ERDs.
+3. **API-** — one per distinct API surface. Same multi-app rule as SCH-. Even a thin draft listing router files and endpoint groups is better than nothing — scuba will upgrade it from extracted OpenAPI specs.
+4. **PROC- auth** — one per service. Every service has auth. Document the mechanism (JWT, API key, OAuth, session), enforcement point (middleware, decorator, gateway), and identity provider. 3-5 Key Facts.
+5. **GLOSSARY-{SERVICE}** — one per service. Extract domain terms found during Step 3 scan. Template: `${CLAUDE_PLUGIN_ROOT}/references/templates/glossary-service.md`.
+6. **RISK-** — one per service. Scan for TODO/FIXME/HACK/XXX, bare exceptions, hardcoded URLs/credentials, disabled tests. Group by theme. Severity always "medium" at snorkel depth. Template: `${CLAUDE_PLUGIN_ROOT}/references/templates/risk-service.md`. If genuinely no signals found (rare), skip with a note.
+
+### Cross-service artifacts (generate ALL of these)
+
+7. **CON-** — one per service pair. For N services, generate exactly N×(N-1)/2 contracts. Name both parties, describe what flows between them (or note "no detected integration"). This is a completeness requirement — do not generate "some" and move on.
+8. **GLOSSARY-** unified — one for the whole reef. Cross-service disambiguation. If you already have per-service glossaries, the unified glossary resolves conflicts and notes where the same term means different things.
+
+### Conditional artifacts (generate when signal is present)
+
+9. **PROC- runtime architecture** — generate when docker-compose, Helm, multiple entry points, or background workers are detected. 3-5 Key Facts on runtime topology.
+10. **DEC-** for observable decisions — generate when the scan reveals a non-obvious technology or architecture choice (dual databases, custom auth, specific queue, sync-over-async). Stub with Context, Decision, and `known_unknowns: ["Rationale not available from code alone"]`.
+
+### Minimum count validation
+
+Before finishing a service, count its artifacts against this checklist:
+
+```
+Service {name} artifact count:
+  SYS-:      {N} (minimum: 1)
+  SCH-:      {N} (minimum: 1 per data model)
+  API-:      {N} (minimum: 1 per API surface)
+  PROC-auth: {N} (minimum: 1)
+  GLOSSARY-: {N} (minimum: 1)
+  RISK-:     {N} (minimum: 1)
+  Total:     {N} (minimum: 6 per single-app service)
+```
+
+If any mandatory type shows 0, go back and generate it before proceeding. A thin draft is always better than a missing artifact — scuba needs the skeleton to build on.
+
+**Target: 6-10 artifacts per source.** For a 4-source reef, that means 24-40 service artifacts + N×(N-1)/2 contracts + 1 unified glossary. Multi-app sources (monorepos with 3+ sub-apps) should generate 8-12 artifacts.
 
 **Parallelism:** Artifact generation is independent per service. Use the Agent tool to generate all artifacts for multiple services concurrently — launch one agent per service, each responsible for that service's full artifact batch (SYS-, SCH-, API-, PROC-, RISK-, etc.). All agents in a single message.
 
@@ -327,6 +352,13 @@ python3 ${CLAUDE_PLUGIN_ROOT}/scripts/reef.py rebuild-index --reef <reef-root>
 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/reef.py rebuild-map --reef <reef-root>
 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/reef.py log "Snorkel pass: generated N artifacts, answered M/T questions" --reef <reef-root>
 ```
+
+**Run the audit** to verify mandatory minimums are met:
+```bash
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/reef.py audit --reef <reef-root>
+```
+
+If the audit reports missing artifacts, generate them now before proceeding. Each missing artifact is independent — launch one agent per gap. A thin draft is always better than a missing artifact.
 
 Then run the health report:
 ```bash

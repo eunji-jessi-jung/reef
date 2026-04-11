@@ -95,84 +95,42 @@ First, check if `.reef/scuba-manifest.json` already exists from a previous run:
 
 ### Building the manifest
 
-Scan all sources and existing artifacts systematically:
+**Step 1: Generate the baseline manifest programmatically.**
 
-### API- artifacts (from extracted specs)
-
-List every `sources/apis/{service}/{sub}/openapi.json` file. Each one → one API- artifact.
-
-```
-Planned API- artifacts:
-- API-{SERVICE}-{SUB} ← sources/apis/{service}/{sub}/openapi.json
-  [exists: yes/no] [current artifact: {id} or none]
+```bash
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/reef.py manifest --reef <reef-root>
 ```
 
-### SCH- artifacts (from extracted schemas)
+This command reads `project.json`, `sources/apis/`, and `sources/schemas/` to generate a manifest with:
+- API- artifacts (one per extracted OpenAPI spec)
+- SCH- artifacts (one per extracted schema + per-collection for document stores)
+- PROC-entity lifecycles (one per core entity extracted from schemas)
+- CON- service pairs (combinatorial: N×(N-1)/2)
+- RISK- per service
+- DEC- placeholders per service
+- GLOSSARY- per service + source index
+- PROC- flow catalogs (for pipeline/orchestration services)
 
-List every `sources/schemas/{service}/{sub}/schema.md` file. Each one → one SCH- artifact.
+The manifest is saved to `.reef/scuba-manifest.json`. Read it and report the counts.
 
-```
-Planned SCH- artifacts:
-- SCH-{SERVICE}-{SUB} ← sources/schemas/{service}/{sub}/schema.md
-  [exists: yes/no] [current artifact: {id} or none]
-```
+**Step 2: Augment the manifest with Claude-discovered items.**
 
-### PROC- entity artifacts (from schema entities)
+The programmatic manifest covers what can be detected from file structure and schema headings. Review it and add items it cannot detect:
 
-For each SCH- artifact (existing or planned), read the schema and extract every entity (table or collection). Each **core entity** gets its own PROC- artifact covering definition, relationships, and lifecycle (if status fields exist).
+- **PROC-/DEC- pattern artifacts** from snorkel signal mining (Step 2). One per scuba-level signal.
+- **PROC- multi-app comparison pairs** — for services where the same domain concept is implemented differently across sub-apps (parallel directory structures, similar-but-not-identical models). One per {concept} × {app-pair}. These require reading source code to detect mirrored structures.
+- **SCH- field lineage** — for core entities with complex data origins (ingestion pipelines, ETL, computed fields). One per entity group. Requires reading ingestion/transform code to identify.
+- **CON- entity comparisons** — for terms appearing in SCH- from different services with potentially different meanings.
 
-**Core entity filter:** An entity is "core" if it has 3+ non-FK fields, OR appears as an API resource in any endpoint, OR is referenced as a FK target by 2+ other entities. Junction tables (2 FK columns only), audit log tables, and pure config tables are documented inside their parent entity's PROC- instead.
+Add these to the manifest's `planned` array and re-save.
 
-```
-Planned PROC- entity artifacts:
-- PROC-{SERVICE}-{ENTITY}-LIFECYCLE ← entity {Entity} from SCH-{SERVICE}-{SUB}
-  [has status field: yes/no] [API resource: yes/no]
-```
+**Step 3: Review and prune.**
 
-### CON- contract artifacts (from service pairs)
+Scan the manifest for entries that are clearly not worth a full artifact:
+- Reference/lookup entities with only 2-3 trivial fields (move to `skipped` with reason)
+- Duplicate coverage (entity already well-covered by an existing artifact)
 
-Compute all service pairs combinatorially. For N services, there are N×(N-1)/2 pairs. Each pair → one CON- artifact (or update to existing).
-
-```
-Planned CON- artifacts:
-- CON-{SERVICE-A}-{SERVICE-B} [exists: yes/no]
-```
-
-### PROC- auth artifacts (from auth patterns)
-
-One per service where auth patterns exist (detected during Step 2 context loading or from SYS- artifacts mentioning auth).
-
-### PROC-/DEC- pattern artifacts (from snorkel signal mining)
-
-One per scuba-level signal identified in Step 2.
-
-### RISK- per service
-
-One per service that does not already have a RISK- artifact with 5+ findings. Even if snorkel created a thin RISK-, scuba deepens it with broader code scanning.
-
-### DEC- observable decisions
-
-One per observable technology/architecture choice that lacks a DEC- artifact. Scan for: database choice rationale, auth provider selection, API framework choice, monorepo structure decisions, sync vs async patterns, soft vs hard delete, versioning strategy, dual-database architectures.
-
-### GLOSSARY- per service
-
-One per service that lacks a per-service GLOSSARY-{SERVICE} artifact. Per-service glossaries are authoritative within their scope and complement the unified glossary.
-
-### PROC- flow catalogs
-
-For services with pipeline/orchestration/job systems (detected by: Prefect flows, Celery tasks, Airflow DAGs, background job classes, sequential status progressions). One per service or subsystem with distinct flow sets.
-
-### PROC- multi-app comparison pairs
-
-For services where the same domain concept is implemented differently across sub-apps (e.g., parallel directory structures, similar-but-not-identical models, domain-branching logic). One per {concept} x {app-pair}.
-
-### SCH- per-collection (document stores)
-
-For MongoDB/document-store services with 3+ collections. One SCH- per collection, documenting fields, indexes, embedded vs referenced docs, and nesting structure. This complements the unified SCH- with per-collection depth.
-
-### SCH- field lineage
-
-For core entities with complex data origins (ingestion pipelines, ETL, computed fields). One per entity group, documenting where each non-trivial field comes from (API input, external system, computed, copied from another entity, system-generated).
+Do NOT prune aggressively — a thin artifact is better than a missing one. Only skip entries that are genuinely trivial.
 
 ### Summary
 
@@ -212,6 +170,8 @@ Save the manifest to `.reef/scuba-manifest.json` with this structure:
 ```
 
 **Phase 1 executes against this manifest.** After each artifact is written, move it from `planned` to `completed`. If a planned artifact turns out to be unnecessary (empty schema, no meaningful content), move it to `skipped` with a reason.
+
+**VALIDATION: Before proceeding to Phase 1, verify that the `planned` array is NOT empty.** If it is, you have not completed this step — go back and enumerate artifacts from each category above. The manifest must contain every artifact that Phase 1 will produce, enumerated BEFORE execution begins. Do not build the manifest retrospectively after writing artifacts.
 
 ### Confirm before executing
 
@@ -421,7 +381,7 @@ For each question or topic:
    - Confidence — high/medium/low
    - Open question — anything the answer raised but did not resolve
 4. **When enough material accumulates for an artifact,** propose creating or updating one. Explain what artifact type, what ID, and what it would cover.
-5. **After each artifact is written,** always ask: "What did I get wrong? What am I missing?"
+5. **After each artifact is written,** move to the next question. Do not ask "What did I get wrong?" after every artifact — it creates unnecessary overhead. The user will speak up if something is wrong.
 
 Proactively suggest questions that code cannot answer:
 
@@ -478,7 +438,7 @@ Use "Updated" instead of "Created" in the log message when updating an existing 
 - **Phase 2 can promote artifacts to `status: active`** based on user confirmation.
 - Do not ask all questions at once — work through them one at a time.
 - Prioritize unanswered questions from the question bank.
-- After every artifact written in Phase 2, ask what was gotten wrong and what is missing.
+- After writing an artifact in Phase 2, move to the next question. The user will correct if needed.
 - Each answered Phase 2 question can produce PROC-, DEC-, RISK-, CON-, or GLOSSARY- artifacts.
 
 ---
