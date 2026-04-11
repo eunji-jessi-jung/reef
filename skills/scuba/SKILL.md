@@ -178,11 +178,27 @@ Save the manifest to `.reef/scuba-manifest.json` with this structure:
 
 **Phase 1 executes against this manifest.** After each artifact is written, move it from `planned` to `completed`. If a planned artifact turns out to be unnecessary (empty schema, no meaningful content), move it to `skipped` with a reason.
 
+### Confirm before executing
+
+After presenting the manifest summary, show an estimated cost and ask for confirmation:
+
+```
+Estimated Phase 1 cost:
+  ~3-5 artifacts/min with parallelism
+  {N} artifacts → ~{N/4} to {N/3} min, ~{N * 5}k-{N * 8}k tokens
+
+Proceed with Phase 1? (yes / skip to Phase 2 / adjust scope)
+```
+
+If the user wants to adjust scope, let them remove categories from the manifest (e.g., "skip entity PROC- artifacts for now, just do API and SCH"). Update the manifest accordingly.
+
+**Do NOT start Phase 1 without user confirmation.**
+
 ---
 
 ## Step 3 — Phase 1: Automated Deepening
 
-No user input. Work through the manifest systematically — every planned artifact must be addressed (completed or explicitly skipped with reason). Report progress as you go: "Writing API-PAYMENTS-GATEWAY (1/9 API artifacts)...", "Writing PROC-PAYMENTS-ORDER (3/24 entity artifacts)...".
+No user input after confirmation. Work through the manifest systematically — every planned artifact must be addressed (completed or explicitly skipped with reason). Report progress as you go: "Writing API-PAYMENTS-GATEWAY (1/9 API artifacts)...", "Writing PROC-PAYMENTS-ORDER (3/24 entity artifacts)...".
 
 All Phase 1 artifacts are `status: "draft"`. Phase 2 can promote to `"active"` with user confirmation.
 
