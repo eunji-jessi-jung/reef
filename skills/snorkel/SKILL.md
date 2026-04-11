@@ -85,6 +85,16 @@ For each source in project.json:
 4. Note the tech stack.
 5. Flag cross-system boundaries (imports, HTTP clients, shared schemas).
 
+**Check for multiple applications within a single source.** Some repos are internal monorepos — one git repo containing multiple independent applications with their own entry points, models, databases, or API surfaces. Common signals:
+- Multiple `main.py` / `app.py` entry points in separate directories
+- Multiple FastAPI/Flask/Express apps under an `applications/`, `services/`, or `apps/` directory
+- Separate database configurations or ORM model sets per sub-directory
+- A workspace orchestrator (Nx, Turborepo, Cargo workspace) managing multiple packages
+
+When you find this: treat each sub-application as a **distinct sub-domain**. Generate separate SCH- and API- artifacts for each (e.g., `SCH-CDM-BREAST`, `SCH-CDM-CHEST`, `API-CDM-BREAST`, `API-CDM-CHEST`), not one combined artifact for the whole repo. The SYS- artifact stays as one per service — it describes the overall system and references the per-app schema/API artifacts.
+
+The "3-6 artifacts per source" target scales up for multi-app sources. A repo with 4 independent apps may warrant 8-12 artifacts.
+
 **Now use the question bank to go deeper.** For each question tagged to this source (or untagged):
 
 - **Orientation questions** (boundaries, dependencies): Read entry points, config, dependency files. Trace imports to external services. Identify databases, queues, auth providers.
@@ -106,9 +116,9 @@ Report progress as you go: "Reading service-a's model layer — found 14 SQLAlch
 
 Generate artifacts guided by what you learned. For each source, produce:
 
-1. **SYS-** first — always. This is the entry point artifact. Use orientation question findings to write a rich overview with real boundaries, dependencies, and tech stack details.
-2. **SCH-** for major data models — use data question findings. Name actual entities, describe relationships, note lifecycle states.
-3. **API-** for API surfaces — use behavior question findings. Group endpoints, note auth patterns, describe key request flows.
+1. **SYS-** first — always. One per service. This is the entry point artifact. Use orientation question findings to write a rich overview with real boundaries, dependencies, and tech stack details.
+2. **SCH-** for major data models — use data question findings. Name actual entities, describe relationships, note lifecycle states. **If the source contains multiple independent apps with separate data models, generate one SCH- per app** (e.g., SCH-CDM-BREAST, SCH-CDM-CHEST), not one combined schema artifact.
+3. **API-** for API surfaces — use behavior question findings. Group endpoints, note auth patterns, describe key request flows. **Same rule: one API- per independent app** if the source has multiple apps with separate API surfaces.
 4. **GLOSSARY-** if domain terms emerged that need definition.
 5. **CON-** for cross-system boundaries — use cross-system question findings. Name both parties, describe what flows between them, cite the client/server code.
 
@@ -182,7 +192,20 @@ python3 /Users/jessi/Projects/seaof-ai/reef/scripts/reef.py snapshot <artifact-i
 
 ---
 
-## Step 5 — Bidirectional linking pass
+## Step 5 — Glossary cross-check
+
+After all artifacts are written (including the GLOSSARY- artifact), do a glossary validation pass:
+
+1. Read the GLOSSARY- artifact(s).
+2. For each non-glossary artifact, scan Key Facts, Overview, and Core Concepts for domain terms defined in the glossary.
+3. If any term is used with a meaning that contradicts the glossary definition, fix the artifact to align — or update the glossary if the artifact's usage is more accurate.
+4. If any glossary-defined term is used ambiguously (e.g., "Case" without specifying which service when the glossary flags it as a disambiguation), add the qualifier.
+
+This prevents drift between artifacts and the glossary from the very first generation. It is fast — just a string-matching pass over terms, not a deep re-read.
+
+---
+
+## Step 6 — Bidirectional linking pass
 
 After all artifacts are written, do a linking pass to ensure the Obsidian graph is fully connected:
 
@@ -200,7 +223,7 @@ This pass is critical for Obsidian graph view — unlinked nodes appear as disco
 
 ---
 
-## Step 6 — Update question bank
+## Step 7 — Update question bank
 
 After generating artifacts, update `.reef/questions.json`:
 
@@ -212,7 +235,7 @@ This gives `/reef:test` and `/reef:scuba` a clear picture of what's covered and 
 
 ---
 
-## Step 7 — Wrap up
+## Step 8 — Wrap up
 
 Run:
 ```bash

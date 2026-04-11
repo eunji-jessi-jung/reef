@@ -12,7 +12,7 @@ You MUST complete these interactions with the user IN ORDER. Do NOT skip any. Do
 2. **Ask the name** (Step 2) — "What should this reef be called?" STOP and wait.
 3. **Ask what it covers** (Step 3) — "Could you give a brief introduction of what this reef covers?" STOP and wait.
 4. **Ask location and sources** (Step 4) — "Where should the reef live? And where are the codebases?" STOP and wait.
-5. **Scan for repos** — Run `find <directory> -name .git -type d 2>/dev/null | sed 's|/.git||' | sort` — this is the ONLY correct way to find repos. Do NOT use ls, glob, or manual directory listing. Present results and ask user to confirm.
+5. **Scan for repos** — Run `find <directory> -name .git -type d 2>/dev/null | sed 's|/.git||' | sort` — this is the ONLY correct way to find repos. Do NOT use ls, glob, or manual directory listing. Check each repo for monorepo signals and expand sub-projects if detected. Present results as a **numbered list** and ask user to select by number.
 6. **Scaffold and index** (Steps 5-6) — automated, no user input.
 7. **Service grouping** (Step 7) — present best guess as table, ask user to correct. STOP and wait.
 8. **Discovery plan** (Step 8) — show what snorkel+source will do, estimated time/tokens. STOP and wait for confirmation.
@@ -91,13 +91,9 @@ Wait for the user's answer before proceeding.
 
 Ask:
 
-"Could you give a brief introduction of what this reef covers? Three things help:
+"How would you describe this project to a new teammate in a sentence or two?
 
-- **Domain** — what area (e.g., payments, infrastructure, data pipeline)
-- **Purpose** — what it does in one sentence
-- **Scale** — roughly how many services
-
-Example: 'e-commerce platform — 6 services for order processing, payments, and fulfillment'"
+Example: 'It's our e-commerce backend — about 6 services handling orders, payments, and fulfillment.'"
 
 Save the user's answer to `.reef/project.json` under a `description` field later during scaffolding. This front-loads domain context (service names, ecosystem, product area) so service grouping and question generation are more accurate.
 
@@ -119,18 +115,44 @@ find <directory> -name .git -type d 2>/dev/null | sed 's|/.git||' | sort
 
 Do NOT use ls, glob, or manually list directories. The find command is the ONLY reliable way to discover all git repos at any depth.
 
-Present what you find:
+**Monorepo detection:** After finding git repos, check each one for monorepo signals. A repo is a monorepo if it contains ANY of:
 
-> "I found N codebases under {directory}:
->
-> - repo-a
-> - repo-b
-> - repo-c
-> - ...
->
-> Cover all of them, or exclude some?"
+- `pnpm-workspace.yaml`
+- `nx.json`
+- `turbo.json`
+- `lerna.json`
+- `package.json` with a `"workspaces"` field
+- `Cargo.toml` with a `[workspace]` section
+- `go.work` file
+- A `packages/`, `services/`, or `apps/` directory containing 2+ subdirectories with their own `package.json`, `go.mod`, `Cargo.toml`, `pyproject.toml`, or `setup.py`
 
-The user either confirms ("all" / "yes" / "looks right") or excludes ("skip repo-c and repo-d"). Apply their answer.
+If monorepo signals are found:
+1. Discover sub-projects by reading the workspace config (e.g., pnpm-workspace.yaml `packages` globs, nx.json projects, turbo.json, Cargo workspace members) or listing immediate subdirectories of `packages/`, `services/`, or `apps/`.
+2. List each sub-project as a separate source in the numbered list, indented under the parent repo, e.g.:
+   ```
+    3. my-monorepo/ (monorepo — 4 sub-projects detected)
+       3a. my-monorepo/services/payments
+       3b. my-monorepo/services/catalog
+       3c. my-monorepo/packages/shared-auth
+       3d. my-monorepo/apps/admin-ui
+   ```
+3. The user can select sub-projects individually (e.g., "3a, 3b" or "all of 3" or "3 except 3c").
+4. Each selected sub-project becomes its own source entry in project.json with its full path.
+
+If no monorepo signals are found, treat the repo as a single source as usual.
+
+**Present as a numbered list** so the user can select by number:
+
+> I found N codebases under {directory}:
+>
+>  1. repo-a
+>  2. repo-b
+>  3. repo-c
+>  ...
+>
+> Which ones? (e.g., "all", "1,3,5", "all except 2")
+
+The user responds with numbers, ranges, or exclusions. Apply their answer.
 
 - If no git repos are found, ask: "No codebases found there. Try a different directory?"
 - Multiple sources: "Good — that is how Reef discovers cross-system contracts."
@@ -269,7 +291,20 @@ Launch **two skills in parallel**:
 1. **Snorkel** — Read `/Users/jessi/Projects/seaof-ai/reef/skills/snorkel/SKILL.md` and follow its instructions. Produces structural draft artifacts.
 2. **Source** — Read `/Users/jessi/Projects/seaof-ai/reef/skills/source/SKILL.md` and follow its instructions. Extracts full API specs and ERDs.
 
-Use the Agent tool to run these concurrently. Both are fully automated — no user input needed. When both complete, summarize results from both and suggest `/reef:scuba` as the next step.
+Use the Agent tool to run these concurrently. Both are fully automated — no user input needed.
+
+When both complete:
+
+1. **Run the health report** to give the user an immediate visual summary of coverage:
+   ```bash
+   python3 /Users/jessi/Projects/seaof-ai/reef/scripts/reef.py lint --reef <reef-root>
+   python3 /Users/jessi/Projects/seaof-ai/reef/scripts/reef.py diff --reef <reef-root>
+   ```
+   Render the health report using the same Unicode box-drawing format defined in the snorkel skill's wrap-up step. This is the payoff moment after a long wait — the user needs the visual satisfaction of seeing coverage bars and artifact counts.
+
+2. **Summarize** results from both agents (artifacts created, API specs extracted, questions answered).
+
+3. **Suggest next steps:** `/reef:scuba` to deepen, `/reef:feed` to add docs, `/reef:test` to check coverage.
 
 ---
 

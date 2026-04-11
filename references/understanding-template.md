@@ -32,7 +32,7 @@ Identify what each repo is and how repos relate to each other.
 Map the applications and extract what they do in user-facing terms.
 
 - What backend and frontend applications exist?
-- What are the high-level features each app provides? (e.g., "manages annotations," "manages admin users," "handles image uploads")
+- What are the high-level features each app provides? (e.g., "manages product listings," "processes transactions," "handles image uploads")
 - What user roles interact with each app? (if identifiable from route guards, role checks, or UI structure)
 
 **Artifact output:** Update SYS- artifacts with feature inventory.
@@ -127,7 +127,7 @@ For each core entity identified in S3:
 
 Trace the key user-facing and system-to-system workflows.
 
-- What are the critical workflows? (e.g., "annotator completes a reading," "new study is ingested")
+- What are the critical workflows? (e.g., "user completes checkout," "new order is processed," "file upload finishes")
 - For each: what is the step-by-step flow from trigger to completion?
 - Where can each workflow fail? What happens when it does?
 - What retry or recovery mechanisms exist?

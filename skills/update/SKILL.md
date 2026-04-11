@@ -84,8 +84,9 @@ Process artifacts one at a time. For each affected artifact:
    - New information found in sources.
    - Claims that no longer hold (source content removed or contradicted).
    - Updated `freshness_note` and `last_verified`.
-5. Present the proposed changes to the user.
-6. Wait for the user to accept or skip this artifact.
+5. **Glossary cross-check.** Before finalizing the update, compare the artifact's terms against GLOSSARY- artifacts. If any Key Fact or description uses a domain term inconsistently with the glossary, fix it. If the source code reveals the glossary definition is outdated, update the glossary too.
+6. Present the proposed changes to the user.
+7. Wait for the user to accept or skip this artifact.
 
 **On accept:**
 

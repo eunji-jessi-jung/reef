@@ -516,7 +516,9 @@ def cmd_lint(args) -> None:
     # Build set of all relates_to targets pointing at each artifact
     incoming = {}  # artifact_id -> set of source artifact ids
     for aid, (_, fm) in art_map.items():
-        for target in (fm.get("relates_to") or []):
+        for entry in (fm.get("relates_to") or []):
+            target = entry.get("target", entry) if isinstance(entry, dict) else entry
+            target = str(target).strip("[]")
             incoming.setdefault(target, set()).add(aid)
 
     # Build current file set for source existence check
@@ -580,7 +582,9 @@ def cmd_lint(args) -> None:
             })
 
         # Check 2: Dangling references
-        for target in (fm.get("relates_to") or []):
+        for entry in (fm.get("relates_to") or []):
+            target = entry.get("target", entry) if isinstance(entry, dict) else entry
+            target = str(target).strip("[]")
             if target not in art_map:
                 errors.append({
                     "artifact": aid,
@@ -625,7 +629,10 @@ def cmd_lint(args) -> None:
                     })
 
         # Check 6: Wikilink/frontmatter sync
-        relates_to_set = set(fm.get("relates_to") or [])
+        relates_to_targets = set()
+        for entry in (fm.get("relates_to") or []):
+            t = entry.get("target", entry) if isinstance(entry, dict) else entry
+            relates_to_targets.add(str(t).strip("[]"))
         wikilinks = set()
         if "## Related" in body:
             rel_start = body.index("## Related")
@@ -638,7 +645,7 @@ def cmd_lint(args) -> None:
 
         # Wikilinks in Related that aren't in relates_to
         for wl in wikilinks:
-            if wl not in relates_to_set:
+            if wl not in relates_to_targets:
                 warnings.append({
                     "artifact": aid,
                     "check": "wikilink_sync",
@@ -647,7 +654,7 @@ def cmd_lint(args) -> None:
                 })
 
         # relates_to entries not in Related wikilinks
-        for rt in relates_to_set:
+        for rt in relates_to_targets:
             if wikilinks and rt not in wikilinks:
                 warnings.append({
                     "artifact": aid,
