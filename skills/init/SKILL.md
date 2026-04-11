@@ -82,7 +82,7 @@ Wait for the user's answer before proceeding.
 
 ## Step 3 — Ask what it covers
 
-Ask: "Could you give a brief introduction of what this reef covers? For example: 'our e-commerce platform — 4 services for order processing and fulfillment' or 'the payments domain.'"
+Ask: "Could you give a brief introduction of what this reef covers? Three things help the most: the **domain** (what area), the **purpose** (what it does), and roughly **how many services** are involved. For example: 'our e-commerce platform — 6 services handling order processing, payments, and fulfillment' or 'the CSG data ecosystem — 4 backend systems for medical image curation and annotation.'"
 
 Save the user's answer to `.reef/project.json` under a `description` field later during scaffolding. This front-loads domain context (service names, ecosystem, product area) so service grouping and question generation are more accurate.
 
@@ -145,7 +145,7 @@ Update `.reef/project.json` with the source paths:
 
 Read the existing project.json first, then update — do not overwrite other fields.
 
-After scaffolding, mention: "If you have existing docs (architecture diagrams, SRS, PRDs, design docs), you can drop them into `sources/raw/` inside the reef directory. These give the snorkel pass richer context to work with. You can also use `/reef:feed` later to add documents."
+Do not mention `sources/raw/` or `/reef:feed` here — it goes by too fast and gets buried. Snorkel's wrap-up is the better place to suggest feeding docs, after the user has seen artifacts and knows what gaps exist.
 
 ---
 
@@ -172,23 +172,23 @@ Try to group repos into services using these signals, in order:
 - **Acronym expansion** — check if a repo prefix is an acronym of another repo's full name (e.g., `ofs-worker` prefix "ofs" matches "order-fulfillment-service" initials O.F.S.)
 - **Shared infrastructure** references (e.g., same auth provider, same database, same message broker)
 
-Present your best guess as a table and ask the user to confirm or correct:
+Present your best guess as a table — include both service names and inferred one-line descriptions. Descriptions front-load richer context for snorkel; service names alone are not enough to generate good artifacts.
 
 > I think these repos group like this:
 >
-> | Service          | Repos                                    |
-> |------------------|------------------------------------------|
-> | {best guess}     | repo-1, repo-2                           |
-> | {best guess}     | repo-3, repo-4, repo-5                   |
-> | ?                | repo-6 (no clear signal)                 |
+> | Service          | Description                              | Repos                                    |
+> |------------------|------------------------------------------|------------------------------------------|
+> | {best guess}     | {inferred description}                   | repo-1, repo-2                           |
+> | {best guess}     | {inferred description}                   | repo-3, repo-4, repo-5                   |
+> | ?                | {unclear}                                | repo-6 (no clear signal)                 |
 >
-> Any corrections?
+> Any corrections — names, descriptions, or groupings?
 
 The user responds in natural language. Parse their corrections, apply them, and save to `.reef/project.json` under a `services` field:
 ```json
 {
   "services": [
-    { "name": "Payments", "full_name": "Payments Platform", "sources": ["pay-gateway", "pay-ledger", "pay-admin", "checkout-frontend"] }
+    { "name": "Payments", "full_name": "Payments Platform", "description": "Payment processing, gateway integration, and ledger management", "sources": ["pay-gateway", "pay-ledger", "pay-admin", "checkout-frontend"] }
   ]
 }
 ```
