@@ -14,7 +14,7 @@ You MUST complete these phases IN ORDER. Do NOT skip any.
 
 1. **Locate the reef** (Step 1)
 2. **Load context** (Step 2)
-3. **Phase 1: Automated Deepening** (Step 3) — all 8 sub-steps, no user input
+3. **Phase 1: Automated Deepening** (Step 3) — all 9 sub-steps, no user input
 4. **Phase 1 Briefing** (Step 4) — present findings, ask user where to start Phase 2
 5. **Phase 2: Interactive Q&A** (Step 5) — Socratic exploration, one question at a time
 6. **Session management** (Step 6) — track progress, summarize at pauses
@@ -52,12 +52,23 @@ Walk up from cwd looking for a `.reef/` directory. That parent is the reef root.
 - Scan `artifacts/` for existing artifacts — read their frontmatter to understand current coverage.
 - Read `sources/apis/` and `sources/schemas/` for extracted API specs and ERDs. These contain the complete endpoint maps and data models. If these directories are empty, note this and warn that Phase 1 will produce thinner results — suggest running `/reef:source` first.
 - Read all GLOSSARY- artifacts — these are needed for entity comparison and glossary cross-checking.
+- **Mine snorkel artifacts for deepening signals.** Read the full body (not just frontmatter) of every existing artifact — especially Key Facts, Core Concepts, and known_unknowns sections. Extract patterns, domain-specific mechanisms, and architectural findings that deserve deeper investigation. Examples of signals:
+  - A named pattern (e.g., "WithData pattern", "outbox pattern", "TBM batching") → candidate for a PROC- artifact documenting the pattern
+  - A domain-specific mechanism (e.g., "hash-based deduplication", "materialized views", "data provenance via ingestion tracking") → candidate for a PROC- or DEC- artifact
+  - A cross-service coupling signal (e.g., "portal_api_client must be passed to service initializers") → candidate for deeper CON- artifact
+  - A gap or uncertainty in known_unknowns that code reading could partially resolve
+
+  **Categorize each signal as scuba-level or deep-level:**
+  - **Scuba**: understand the pattern conceptually — what it is, which entities/services use it, why it exists, what it enables, how it differs from the standard approach. Produces PROC-, DEC-, or CON- artifacts.
+  - **Deep**: trace the implementation exhaustively — field-by-field lineage, exact code paths, every edge case. Produces dense, line-cited artifacts. Flag these for `/reef:deep` rather than investigating in scuba.
+
+  Collect scuba-level signals into a list for Phase 1 sub-step 3.9. Collect deep-level signals into a separate list for the Phase 1 briefing.
 
 ---
 
 ## Step 3 — Phase 1: Automated Deepening
 
-No user input. Complete all 8 sub-steps before presenting the briefing. Report progress as you go ("Analyzing API patterns for payments-gateway...", "Scanning for status fields in schema artifacts...").
+No user input. Complete all 9 sub-steps before presenting the briefing. Report progress as you go ("Analyzing API patterns for payments-gateway...", "Scanning for status fields in schema artifacts...").
 
 All Phase 1 artifacts are `status: "draft"`. Phase 2 can promote to `"active"` with user confirmation.
 
@@ -190,11 +201,28 @@ Check GLOSSARY- artifacts for terms flagged as ambiguous or used in multiple ser
 
 For single-service reefs, skip this step.
 
+### 3.9 — Pattern and mechanism deepening
+
+Using the scuba-level signals collected during Step 2 (mining snorkel artifacts), investigate each one:
+
+1. For each named pattern or domain-specific mechanism found in snorkel artifacts' Key Facts or Core Concepts:
+   - Read the source code referenced by the artifact to understand the pattern at a conceptual level
+   - Document: what the pattern is, which entities/services use it, why it exists, what it enables, how it differs from the standard approach
+   - Example: if snorkel found "WithData pattern: core entities split into immutable identity record and versioned data records" — read the model files to understand which entities use it, what the versioning semantics are, and why this design was chosen over simple mutable records
+   - Example: if snorkel found "hash-based deduplication using patient_hash, study_hash, dicom_hash" — document what's hashed, why triple hashing exists, what happens on collision, and how it relates to data provenance
+   - Example: if snorkel found "StudyLatestFlatMV is a materialized view" — document why it exists (read-heavy list endpoints), how it differs from a regular view (pre-computed, needs refresh), and what the staleness implications are
+
+2. **Output:** PROC- or DEC- artifact per pattern/mechanism. Set `freshness_note: "scuba-depth pattern analysis"`. Focus on the "what and why" — leave "trace every line" for `/reef:deep`.
+
+3. **Do not go deep.** If investigating a signal requires tracing more than 2-3 source files to understand, stop and flag it as a deep-level item. Add it to the deep-level signals list for the briefing. The heuristic:
+   - Scuba: "What is this pattern and why does it exist?" (conceptual, 1-3 files)
+   - Deep: "Show me every line of the implementation." (exhaustive, 5+ files, field-by-field)
+
 ---
 
 ## Step 4 — Phase 1 Briefing
 
-After all 8 sub-steps, present a summary:
+After all 9 sub-steps, present a summary:
 
 ```
 Phase 1 complete.
@@ -214,10 +242,16 @@ Patterns found:
 - {Service-A} → {Service-B} has the heaviest coupling (N call sites)
 - ...
 
-Could not resolve from code alone:
+Could not resolve from code alone (Phase 2 candidates):
 - What triggers the {state} → {state} transition for {entity}?
 - Is the naming overlap between {service-A}.{entity} and {service-B}.{entity} intentional?
 - What is the production behavior for {timeout/retry} pattern?
+- ...
+
+Flagged for /reef:deep (too detailed for scuba):
+- Field-by-field lineage of {entity} (hash computation, transformation chain)
+- Exact refresh logic for {materialized view}
+- Line-by-line execution path for {critical flow}
 - ...
 ```
 
