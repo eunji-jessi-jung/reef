@@ -130,20 +130,32 @@ For each source repo, scan dependency files to identify API frameworks and ORMs:
 | Tortoise ORM | `tortoise-orm` in deps | Model classes inheriting from `Model` |
 | Alembic | `alembic` in deps or `alembic/` directory | Migration files for ground-truth schema |
 
-**Multi-app repos:** Some repos contain multiple applications (e.g., an Nx monorepo with `applications/breast/`, `applications/chest/`). Detect each sub-application separately. Check for per-app dependency files and entry points.
+**Package manager detection:**
+
+| Manager | Signal | Run command |
+|---------|--------|-------------|
+| Poetry | `pyproject.toml` with `[tool.poetry]` + `poetry.lock` | `poetry run python3 -c "..."` |
+| uv | `uv.lock` or `pyproject.toml` with `[tool.uv]` | `uv run python3 -c "..."` |
+| Pipenv | `Pipfile` + `Pipfile.lock` | `pipenv run python3 -c "..."` |
+| pip/venv | `.venv/` or `venv/` directory | `. .venv/bin/activate && python3 -c "..."` |
+| None | No lock file, no venv | `python3 -c "..."` (bare, least likely to work) |
+
+**This is critical for tier 3.** Running bare `python3` will fail for most repos because dependencies are installed in the project's virtual environment, not system Python. Always use the package manager's run command.
+
+**Multi-app repos:** Some repos contain multiple applications (e.g., an Nx monorepo with `applications/breast/`, `applications/chest/`). Detect each sub-application separately. Check for per-app dependency files and entry points. The package manager may be at the repo root (shared) or per-app.
 
 Report what was detected:
 
 ```
 Tech stacks detected:
 
-| Service | Repo / App              | API Framework | ORM/ODM      | DB         |
-|---------|-------------------------|---------------|--------------|------------|
-| CDM     | cc-backend/breast       | FastAPI       | SQLAlchemy   | PostgreSQL |
-| CDM     | cc-backend/chest        | FastAPI       | SQLAlchemy   | PostgreSQL |
-| CTL     | ctl-data-server         | FastAPI       | Beanie       | MongoDB    |
-| DAIP    | aipf-authz-api          | Go (swag)     | SQL migrations | PostgreSQL |
-| RDP     | rdp-prefect-gateway     | FastAPI       | —            | —          |
+| Service | Repo / App              | API Framework | ORM/ODM      | DB         | Pkg Mgr |
+|---------|-------------------------|---------------|--------------|------------|---------|
+| CDM     | cc-backend/breast       | FastAPI       | SQLAlchemy   | PostgreSQL | poetry  |
+| CDM     | cc-backend/chest        | FastAPI       | SQLAlchemy   | PostgreSQL | poetry  |
+| CTL     | ctl-data-server         | FastAPI       | Beanie       | MongoDB    | poetry  |
+| DAIP    | aipf-authz-api          | Go (swag)     | SQL migrations | PostgreSQL | —     |
+| RDP     | rdp-prefect-gateway     | FastAPI       | —            | —          | uv      |
 ```
 
 ---
@@ -188,20 +200,36 @@ Report: "Replaying cached recipe for ctl-data-server..."
 
 ### Tier 3 — Runtime extraction (max 5 attempts)
 
-This tier tries to import the application and dump its API schema at runtime. The approach depends on the framework:
+This tier tries to import the application and dump its API schema at runtime.
+
+**Step 0 — Check for an existing generation script.** Many repos include a script like `scripts/generate_api_schema.py` or `scripts/generate_openapi.py`. Search for these first:
+```bash
+find <repo-root> -name "generate_api*" -o -name "generate_openapi*" -o -name "openapi_gen*" | head -5
+```
+If found, run it using the repo's package manager (e.g., `poetry run python scripts/generate_api_schema.py`). If it succeeds and produces an OpenAPI spec, use that. This is the most reliable runtime path because the repo maintainers already solved the dependency and env var problems.
+
+**Step 1 — Use the package manager's run command.** Always wrap Python commands with the detected package manager. Never use bare `python3` — it won't have the dependencies installed.
 
 **FastAPI / Flask-RESTX / Flask-Smorest:**
 ```bash
-PYTHONPATH=<app-src-dir>:<stubs-dir> python3 -c "
+# Poetry:
+PYTHONPATH=<app-src-dir>:<stubs-dir> poetry run python3 -c "
 import json
-from <app_module>.main import app  # or wherever the app object lives
+from <app_module>.main import app
+print(json.dumps(app.openapi(), indent=2))
+"
+
+# uv:
+PYTHONPATH=<app-src-dir>:<stubs-dir> uv run python3 -c "
+import json
+from <app_module>.main import app
 print(json.dumps(app.openapi(), indent=2))
 "
 ```
 
 **Django REST Framework:**
 ```bash
-DJANGO_SETTINGS_MODULE=<project>.settings python3 -c "
+DJANGO_SETTINGS_MODULE=<project>.settings poetry run python3 -c "
 from rest_framework.schemas.openapi import SchemaGenerator
 import json
 generator = SchemaGenerator(title='API')
@@ -225,11 +253,13 @@ const { SwaggerModule } = require('@nestjs/swagger');
 "
 ```
 
+**For monorepos with shared libraries** (e.g., `libraries/backend-core/src/`), add all library source directories to PYTHONPATH. Run the command from the app directory if each app has its own pyproject.toml, or from the repo root if there's a single shared one.
+
 **Protocol for each attempt:**
 
 1. **Find the app entry point.** Read `main.py`, `app.py`, `main.go`, `index.ts`, etc. Identify the app object and its import path.
-2. **Identify the PYTHONPATH / module structure.** For monorepos with shared libraries (e.g., `libraries/backend-core/src/`), add all library source directories to PYTHONPATH.
-3. **Run the extraction command.**
+2. **Identify the package manager and working directory.** Use the detected package manager from Step 1. For monorepos, run from the directory that contains the `pyproject.toml` / `poetry.lock`.
+3. **Run the extraction command** using `poetry run` / `uv run` / `pipenv run`.
 4. **If it succeeds** — save output as `openapi.json`, write meta, cache the recipe, move on.
 5. **If it fails** — read the error message carefully:
    - **Missing environment variable** (e.g., `KeyError: 'DB_HOST'`): Add a dummy value (`"localhost"`, `"stub"`, `"true"`, `"[]"`, `"{}"`) and retry. For JSON-valued env vars, use the appropriate empty structure.
@@ -343,26 +373,30 @@ Same as API tier 2. If a cached ERD recipe exists, replay it.
 
 ### Tier 3 — Runtime extraction (max 5 attempts)
 
+Use the repo's package manager (detected in Step 1) for all Python commands.
+
 **SQLAlchemy:**
-```python
+```bash
+poetry run python3 -c "
 from sqlalchemy import inspect, create_engine
-from <app>.models import Base  # or wherever models are defined
-engine = create_engine("sqlite:///:memory:")
+from <app>.models import Base
+engine = create_engine('sqlite:///:memory:')
 Base.metadata.create_all(engine)
 inspector = inspect(engine)
-# Dump table names, columns, foreign keys
+# Dump table names, columns, foreign keys as JSON
+"
 ```
 
 **Django:**
 ```bash
-python3 manage.py inspectdb
+poetry run python3 manage.py inspectdb
 ```
 
-**Beanie/Mongoose:** Read the document class definitions (these are typically self-describing — fields, validators, indexes are all in the class).
+**Beanie/Mongoose:** Read the document class definitions (these are typically self-describing — fields, validators, indexes are all in the class). No runtime extraction needed — treat as tier 4.
 
-**Alembic:** Read the latest or consolidated migration file. It contains the ground-truth schema as `op.create_table(...)` calls.
+**Alembic:** Read the latest or consolidated migration file. It contains the ground-truth schema as `op.create_table(...)` calls. No runtime extraction needed — treat as tier 1 if migration files exist.
 
-Same 5-attempt protocol as API extraction. Same stub/env patterns.
+Same 5-attempt protocol as API extraction. Same stub/env patterns. Same package manager requirement — never use bare `python3`.
 
 ### Tier 4 — Direct code reading (fallback)
 
