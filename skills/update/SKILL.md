@@ -23,13 +23,29 @@ Curious Researcher. Present-participle narration. No emojis. No exclamation mark
 
 Find the `.reef/` directory in cwd or parents. Read `project.json` from the reef root.
 
-### 2. Re-index sources
+### 2. Re-extract API specs and ERDs
+
+Run the source extraction skill to refresh API specs and ERDs from current code. This uses cached recipes from `.reef/source-recipes.json`, so it replays the exact commands that worked during the initial extraction — no stub discovery or environment debugging needed.
+
+Read `/Users/jessi/Projects/seaof-ai/reef/skills/source/SKILL.md` and follow its instructions. Key differences from a first run:
+
+- **Tier 1 (cached recipe replay) will handle most repos.** The recipe cache stores the command, env vars, PYTHONPATH, and stub list. Replay produces a fresh spec from today's code.
+- **If a cached recipe fails** (new dependency, changed env var), it falls through to Tier 2 (fresh runtime extraction) automatically.
+- **This step is fully automated** — no user input needed unless a tool is missing.
+
+After source extraction completes, report what was refreshed:
+
+```
+Source re-extraction complete. 8 API specs and 5 ERDs refreshed from current code.
+```
+
+### 3. Re-index sources
 
 ```bash
 python3 /Users/jessi/Projects/seaof-ai/reef/scripts/reef.py index --reef <reef-root>
 ```
 
-### 3. Detect changes
+### 4. Detect changes
 
 ```bash
 python3 /Users/jessi/Projects/seaof-ai/reef/scripts/reef.py diff --reef <reef-root>
@@ -46,7 +62,7 @@ Affected artifacts: SYS-INGEST, SCH-INGEST-ORDER, PROC-INGEST-ORDER-LIFECYCLE
 
 Build the affected list by matching changed files to artifacts that reference them in `sources`.
 
-### 4. Classify each changed file
+### 5. Classify each changed file
 
 | Classification | Meaning | Action |
 |---|---|---|
@@ -56,7 +72,7 @@ Build the affected list by matching changed files to artifacts that reference th
 | deleted | File removed from disk | Warn that referencing artifacts may be invalid |
 | unchanged | No movement | Skip |
 
-### 5. Update each affected artifact
+### 6. Update each affected artifact
 
 Process artifacts one at a time. For each affected artifact:
 
@@ -86,7 +102,7 @@ Process artifacts one at a time. For each affected artifact:
 
 - Leave the artifact unchanged. Move to the next one.
 
-### 6. Post-update commands
+### 7. Post-update commands
 
 After all artifacts have been processed (accepted or skipped), run:
 
@@ -108,10 +124,45 @@ Update complete. Refreshed 3 of 5 affected artifacts.
 Skipped: API-INGEST-REST, CON-INGEST-PIPELINE-FEED
 ```
 
-### 7. No changes detected
+### 8. No changes detected
 
-If the diff command reports no source changes, respond:
+If the diff command reports no source changes after re-indexing, respond:
 
-> "All sources unchanged since last update. Your reef is fresh."
+> "All sources unchanged since last update. API specs and ERDs have been refreshed from current code. Your reef is fresh."
 
-Do not run any further steps.
+Source re-extraction (Step 2) always runs regardless of the diff result — the code may have changed even if the indexed file set hasn't. The diff in Step 4 only determines whether artifacts need content updates.
+
+---
+
+### 9. Handling renames
+
+If the user asks to rename a service (e.g., "we renamed Orders to Fulfillment"), this cascades across the reef:
+
+1. **Identify all affected files.** Search for the old name in:
+   - Artifact filenames (e.g., `SYS-ORDERS.md` → `SYS-FULFILLMENT.md`)
+   - Artifact `id` fields in frontmatter
+   - `relates_to` entries in other artifacts
+   - `[[wikilinks]]` in body text
+   - `.reef/project.json` services array
+   - `.reef/questions.json`
+   - `sources/apis/` and `sources/schemas/` directory names
+
+2. **Present the full list of changes** to the user before making any edits. Example:
+   ```
+   Renaming "orders" → "fulfillment" affects:
+     - 3 artifact files to rename (SYS-ORDERS, SCH-ORDERS-CORE, API-ORDERS-REST)
+     - 3 artifact IDs to update in frontmatter
+     - 7 relates_to references across other artifacts
+     - 4 wikilinks in body text
+     - 1 service entry in project.json
+     - 2 source directories (apis/orders/, schemas/orders/)
+   ```
+
+3. **On confirmation**, apply all changes atomically:
+   - Rename files
+   - Update IDs, relates_to, wikilinks, project.json
+   - Rename source directories
+   - Run rebuild-index, rebuild-map
+   - Log the rename
+
+4. **Run snapshot** on every modified artifact.

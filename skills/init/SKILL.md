@@ -44,8 +44,13 @@ Then print a compact orientation block:
 - Sweet spot: 3-15 repos that form one domain or team ecosystem
   (Bigger org? One reef per team — not one reef for everything)
 - 3 quick questions from you, then full automation
-- ~15-20 min, ~200-300k tokens depending on codebase size
-  (Free for Max subscribers; on API: roughly $10-20 one-time)
+
+Estimated cost (one-time):
+  3-5 repos   ~10 min   ~80-100k tokens   Pro plan works well
+  6-10 repos  ~15 min   ~150-200k tokens   Pro plan, may hit rate limits
+  10-15 repos ~20 min   ~250-300k tokens   Max recommended
+  (On API: roughly $3-5 for small, $10-20 for large)
+
 - Output: draft artifacts + API specs + ERDs + question bank
 - After init: /reef:scuba to deepen, /reef:feed to add docs
 ```
@@ -212,31 +217,44 @@ Run:
 python3 /Users/jessi/Projects/seaof-ai/reef/scripts/reef.py log "Reef initialized: <name> covering <sources>." --reef <resolved-reef-path>
 ```
 
-Now present a discovery plan to the user. Tailor the details based on what was found during indexing — number of sources, detected frameworks, file counts:
+Now present a discovery plan to the user. Tailor the details based on what was found during indexing — number of sources, detected frameworks, file counts. The explanation must be **concrete and scannable** — bullet lists, not prose. The user needs to understand what will happen, what tools are involved, and what they might be asked to do.
 
 ```
-Reef is set up. Here is what happens next:
+Reef is set up. Here is what happens next.
 
-Two things will run in parallel:
+Two things will run in parallel — both fully automated:
 
-  Snorkel (structural discovery)
-  - Scan directory trees, READMEs, and key source files
-  - Generate discovery questions from what it finds
-  - Produce 3-6 draft artifacts per source (SYS-, SCH-, API-, CON-)
-  - Build the question bank for later deepening
+**1. Snorkel** (structural discovery)
+- Reads directory trees, READMEs, and key source files in each repo
+- Generates discovery questions about architecture and design
+- Produces 3-6 draft artifacts per service (SYS-, SCH-, API-, CON-)
+- Builds the question bank for later deepening with /reef:scuba
 
-  Source (API + data model extraction)
-  - Detect tech stacks (frameworks, ORMs) in each repo
-  - Extract full API specs (OpenAPI/Swagger) where possible
-  - Extract entity-relationship diagrams from model files
-  - Cache recipes for fast re-extraction on future runs
+**2. Source** (API specs + data model extraction)
+- Detects tech stacks in each repo (frameworks, ORMs, package managers)
+- Extracts live API specs by importing your app at runtime
+  - For Python (FastAPI, Django, Flask): runs `app.openapi()` via your project's venv
+  - For Go (gin/echo/chi): uses `swag` to generate from annotations
+  - For Node (NestJS, Express): uses Swagger module extraction
+- Extracts entity-relationship diagrams from ORM models (SQLAlchemy, Prisma, etc.)
+- Caches successful recipes so future re-extractions are instant
 
-Estimated time: ~10-15 minutes
-Estimated tokens: ~50-80k depending on codebase size
+**About tools:**
+- Source extraction uses your project's own build tools (poetry, uv, go, swag, etc.)
+- If a tool is missing, you will be asked whether to install it
+  - Example: `pip install poetry` or `go install github.com/swaggo/swag/cmd/swag@latest`
+- If you decline, Reef falls back to copying existing spec files or reading code directly
+  - Fallback specs may be **out of date** — Reef will flag this with a staleness warning
 
-Both run fully automated — no input needed from you.
+**No input needed** unless a missing tool prompt appears.
+
+Estimated time: ~10-15 minutes for <N> repos
+Estimated tokens: ~50-80k (scales with codebase size)
+
 Ready to start?
 ```
+
+Replace `<N>` with the actual source count.
 
 **Wait for the user to confirm before proceeding.** The user might want to adjust scope, take a break, or run it later.
 
