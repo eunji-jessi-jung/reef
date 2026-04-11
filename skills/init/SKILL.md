@@ -82,7 +82,15 @@ Wait for the user's answer before proceeding.
 
 ## Step 3 — Ask what it covers
 
-Ask: "Could you give a brief introduction of what this reef covers? Three things help the most: the **domain** (what area), the **purpose** (what it does), and roughly **how many services** are involved. For example: 'our e-commerce platform — 6 services handling order processing, payments, and fulfillment' or 'the CSG data ecosystem — 4 backend systems for medical image curation and annotation.'"
+Ask:
+
+"Could you give a brief introduction of what this reef covers? Three things help:
+
+- **Domain** — what area (e.g., payments, infrastructure, data pipeline)
+- **Purpose** — what it does in one sentence
+- **Scale** — roughly how many services
+
+Example: 'e-commerce platform — 6 services for order processing, payments, and fulfillment'"
 
 Save the user's answer to `.reef/project.json` under a `description` field later during scaffolding. This front-loads domain context (service names, ecosystem, product area) so service grouping and question generation are more accurate.
 
