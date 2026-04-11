@@ -6,13 +6,15 @@ description: "Extract full API specs and ERDs from source repos using a tiered p
 
 Extract complete API specifications and entity-relationship diagrams from source codebases. Uses a tiered protocol — try the fastest reliable method first, fall back gracefully. Caches successful recipes for repeat runs.
 
-This skill sits between snorkel and scuba in the core loop:
+This skill runs **in parallel with snorkel** after init:
 
 ```
-init → snorkel → source → scuba → deep
+         ┌→ snorkel (structural artifacts)
+init → ──┤                                  → scuba → deep
+         └→ source  (API specs + ERDs)
 ```
 
-Snorkel produces structural draft artifacts. Source extracts the full runtime specs. Scuba uses both to ask deeper questions.
+Snorkel writes to `artifacts/`. Source writes to `sources/raw/`. No file conflicts. Scuba uses both.
 
 ---
 
@@ -323,13 +325,14 @@ After all repos are processed, write `.reef/source-recipes.json`:
 
 ---
 
-## Step 5 — Re-index and report
+## Step 5 — Log and report
 
 Run:
 ```bash
-python3 ${CLAUDE_PLUGIN_ROOT}/scripts/reef.py index --reef <reef-root>
 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/reef.py log "Source extraction: N API specs, M ERDs extracted" --reef <reef-root>
 ```
+
+**Do not run `reef.py index` or `rebuild-index` or `rebuild-map` here.** Source only writes to `sources/raw/` and `.reef/source-recipes.json` — it does not create artifacts. Re-indexing is handled by snorkel (if running in parallel) or by the next skill that runs (scuba, update, etc.). This avoids race conditions with snorkel's reef.py calls.
 
 Report what was generated:
 

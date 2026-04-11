@@ -218,12 +218,11 @@ Summarize:
 
 Then suggest next steps:
 
-"The snorkel pass answered M of T discovery questions. The structural scan produced draft artifacts, but API endpoints and data models are only sketched from file structure — not from the actual runtime specs.
+"The snorkel pass answered M of T discovery questions. The structural scan produced draft artifacts with honest gaps.
 
-Next step:
-- `/reef:source` — extract full API specs and ERDs from your source repos. This gives scuba the complete picture of your APIs and data models to ask deeper questions.
+If `/reef:source` ran in parallel, full API specs and ERDs are now in `sources/raw/` — ready for deeper exploration.
 
-After source extraction:
+Next steps:
 - `/reef:scuba` — work through the unanswered questions together. You bring the domain knowledge, I read the code.
 - `/reef:deep` — exhaustive line-by-line tracing of a specific area.
 - `/reef:test` — see how well the reef answers your questions right now."

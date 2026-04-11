@@ -14,9 +14,9 @@ Reef is a Claude Code plugin. It reads source code, asks the right questions, an
 Then, in any project directory:
 
 ```
-/reef:init        # Set up the reef, point it at your source code, seed questions
-/reef:snorkel     # Auto-discover 3-6 draft artifacts in ~5 minutes
-/reef:source      # Extract full API specs and ERDs from your source repos
+/reef:init        # Set up the reef, then auto-runs snorkel + source in parallel:
+                  #   snorkel — auto-discover 3-6 draft artifacts
+                  #   source  — extract full API specs and ERDs
 /reef:scuba       # Deepen drafts through guided Socratic questioning
 ```
 

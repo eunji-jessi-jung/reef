@@ -195,16 +195,21 @@ The user responds in natural language. Parse their corrections, apply them, and 
 
 ---
 
-## Step 8 — Auto-trigger snorkel
+## Step 8 — Auto-trigger snorkel and source
 
-Report: "Reef is set up. Starting discovery..."
+Report: "Reef is set up. Starting discovery and source extraction..."
 
 Run:
 ```bash
 python3 /Users/jessi/Projects/seaof-ai/reef/scripts/reef.py log "Reef initialized: <name> covering <sources>." --reef <resolved-reef-path>
 ```
 
-Now execute the full `/reef:snorkel` skill. Read `/Users/jessi/Projects/seaof-ai/reef/skills/snorkel/SKILL.md` and follow its instructions. Snorkel is fully automated from here — no user input needed.
+Now launch **two skills in parallel**:
+
+1. **Snorkel** — Read `/Users/jessi/Projects/seaof-ai/reef/skills/snorkel/SKILL.md` and follow its instructions. Produces structural draft artifacts.
+2. **Source** — Read `/Users/jessi/Projects/seaof-ai/reef/skills/source/SKILL.md` and follow its instructions. Extracts full API specs and ERDs.
+
+Use the Agent tool to run these concurrently. Both are fully automated — no user input needed. When both complete, summarize results from both and suggest `/reef:scuba` as the next step.
 
 ---
 
