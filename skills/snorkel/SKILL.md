@@ -35,15 +35,7 @@ Report results in natural language.
 
 ---
 
-## Step 2 — Extract API specs and ERDs
-
-If API frameworks or ORMs are detected in any source, run extraction automatically. Read `/Users/jessi/Projects/seaof-ai/reef/skills/extract/SKILL.md` and follow its instructions using the "Called from init" integration mode (skip context loading and re-indexing). The extracted specs land in `sources/raw/`.
-
-If no API frameworks or ORMs are detected, skip this step silently. Do not ask the user.
-
----
-
-## Step 3 — Generate discovery questions
+## Step 2 — Generate discovery questions
 
 Read `/Users/jessi/Projects/seaof-ai/reef/references/understanding-template.md`. For snorkel, focus on the **Snorkel (S1-S8)** questions.
 
@@ -83,7 +75,7 @@ Show the questions briefly — a numbered list, grouped by service. Do not ask f
 
 ---
 
-## Step 4 — Question-guided structural scan
+## Step 3 — Question-guided structural scan
 
 For each source in project.json:
 
@@ -110,7 +102,7 @@ Report progress as you go: "Reading service-a's model layer — found 14 SQLAlch
 
 ---
 
-## Step 5 — Generate artifacts
+## Step 4 — Generate artifacts
 
 Generate artifacts guided by what you learned. For each source, produce:
 
@@ -190,7 +182,7 @@ python3 /Users/jessi/Projects/seaof-ai/reef/scripts/reef.py snapshot <artifact-i
 
 ---
 
-## Step 6 — Update question bank
+## Step 5 — Update question bank
 
 After generating artifacts, update `.reef/questions.json`:
 
@@ -202,7 +194,7 @@ This gives `/reef:test` and `/reef:scuba` a clear picture of what's covered and 
 
 ---
 
-## Step 7 — Wrap up
+## Step 6 — Wrap up
 
 Run:
 ```bash
@@ -226,8 +218,12 @@ Summarize:
 
 Then suggest next steps:
 
-"The snorkel pass answered M of T discovery questions. The remaining gaps are areas where code alone is not enough — domain context, decision rationale, operational reality.
+"The snorkel pass answered M of T discovery questions. The structural scan produced draft artifacts, but API endpoints and data models are only sketched from file structure — not from the actual runtime specs.
 
+Next step:
+- `/reef:source` — extract full API specs and ERDs from your source repos. This gives scuba the complete picture of your APIs and data models to ask deeper questions.
+
+After source extraction:
 - `/reef:scuba` — work through the unanswered questions together. You bring the domain knowledge, I read the code.
 - `/reef:deep` — exhaustive line-by-line tracing of a specific area.
 - `/reef:test` — see how well the reef answers your questions right now."
@@ -265,7 +261,7 @@ Only mention this if the gaps are genuinely the kind that docs would fill. Do no
 
 ## If Called Without Init
 
-If `.reef/questions.json` is empty or missing, Step 3 (Generate discovery questions) will create it. If `.reef/project.json` has no service groupings, snorkel will proceed without them — questions will be per-repo rather than per-service. Suggest the user run `/reef:init` for a better experience. Snorkel is self-sufficient — it can run standalone on any reef that has been scaffolded and indexed.
+If `.reef/questions.json` is empty or missing, Step 2 (Generate discovery questions) will create it. If `.reef/project.json` has no service groupings, snorkel will proceed without them — questions will be per-repo rather than per-service. Suggest the user run `/reef:init` for a better experience. Snorkel is self-sufficient — it can run standalone on any reef that has been scaffolded and indexed.
 
 ---
 

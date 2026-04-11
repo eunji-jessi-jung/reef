@@ -16,6 +16,7 @@ Then, in any project directory:
 ```
 /reef:init        # Set up the reef, point it at your source code, seed questions
 /reef:snorkel     # Auto-discover 3-6 draft artifacts in ~5 minutes
+/reef:source      # Extract full API specs and ERDs from your source repos
 /reef:scuba       # Deepen drafts through guided Socratic questioning
 ```
 
@@ -25,6 +26,7 @@ Then, in any project directory:
 |-------|-------------|
 | `/reef:init` | Bootstrap a new reef — scope, scaffold, index, seed questions |
 | `/reef:snorkel` | Auto-discovery surface pass, 3-6 draft artifacts, no questions asked |
+| `/reef:source` | Extract full API specs and ERDs with tiered protocol + recipe caching |
 | `/reef:scuba` | Socratic deepening through guided question-and-answer |
 | `/reef:deep` | Exhaustive line-by-line tracing of critical areas |
 | `/reef:artifact` | Create or update a single artifact with full contract enforcement |
@@ -37,7 +39,9 @@ Then, in any project directory:
 
 **Snorkel** — First contact with a codebase. No questions, no input. Produces draft artifacts with honest `known_unknowns`. Also useful when adding a new source to an existing reef.
 
-**Scuba** — You have drafts and domain knowledge. The AI reads code and asks you things code alone can't answer: why decisions were made, who owns what, what breaks in practice. This is where most real knowledge gets captured.
+**Source** — After snorkel, before scuba. Extracts complete API specs and entity-relationship diagrams from your source repos. Tries copying existing specs first, then runtime extraction, then code reading as fallback. Caches successful recipes so repeat runs are fast.
+
+**Scuba** — You have drafts, full API/ERD specs, and domain knowledge. The AI reads code and asks you things code alone can't answer: why decisions were made, who owns what, what breaks in practice. This is where most real knowledge gets captured.
 
 **Deep** — Critical systems where shallow reading misses real behavior. Line-by-line tracing, 5+ Key Facts per artifact with precise citations. Reserve for areas where getting it wrong has consequences.
 
