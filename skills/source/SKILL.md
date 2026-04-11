@@ -40,17 +40,17 @@ sources/
 sources/
   apis/
     cdm/
-      breast/openapi.json       # tier 1: copied existing spec
-      chest/openapi.json        # tier 1: copied existing spec
-      manufacturer/openapi.json # tier 1: copied existing spec
-      inference-result/openapi.json  # tier 3: runtime extracted
+      breast/openapi.json       # tier 2: runtime extracted
+      chest/openapi.json        # tier 2: runtime extracted
+      manufacturer/openapi.json # tier 2: runtime extracted
+      inference-result/openapi.json  # tier 2: runtime extracted
     ctl/
-      openapi.json              # tier 3: runtime extracted (single-app repo)
+      openapi.json              # tier 2: runtime extracted (single-app repo)
     daip/
-      authz/openapi.json        # tier 1: copied existing swagger.json
-      data-lineage/openapi.json # tier 1: converted from openapi.yml
+      authz/openapi.json        # tier 2: runtime extracted (swag)
+      data-lineage/openapi.json # tier 2: runtime extracted
     rdp/
-      prefect-gateway/openapi.json  # tier 3: runtime extracted
+      prefect-gateway/openapi.json  # tier 2: runtime extracted
   schemas/
     cdm/
       breast/schema.md
@@ -140,7 +140,7 @@ For each source repo, scan dependency files to identify API frameworks and ORMs:
 | pip/venv | `.venv/` or `venv/` directory | `. .venv/bin/activate && python3 -c "..."` |
 | None | No lock file, no venv | `python3 -c "..."` (bare, least likely to work) |
 
-**This is critical for tier 3.** Running bare `python3` will fail for most repos because dependencies are installed in the project's virtual environment, not system Python. Always use the package manager's run command.
+**This is critical for tier 2 (runtime extraction).** Running bare `python3` will fail for most repos because dependencies are installed in the project's virtual environment, not system Python. Always use the package manager's run command.
 
 **Multi-app repos:** Some repos contain multiple applications (e.g., an Nx monorepo with `applications/breast/`, `applications/chest/`). Detect each sub-application separately. Check for per-app dependency files and entry points. The package manager may be at the repo root (shared) or per-app.
 
@@ -166,39 +166,21 @@ For each repo/app where an API framework was detected, follow the tiers in order
 
 **All tiers must produce `openapi.json`** — valid OpenAPI 3.x JSON format. No markdown, no YAML. If the source is YAML or Swagger 2.x, convert to OpenAPI 3.x JSON.
 
-### Tier 1 — Copy existing spec
+**Design principle: live truth over speed.** A stale spec that gets one endpoint wrong destroys trust with engineers. Runtime extraction from today's code is always preferred over copying a file that may have been generated months ago.
 
-Search for existing API specs in these locations:
-- Repo root: `openapi.json`, `openapi.yaml`, `swagger.json`, `swagger.yaml`
-- Common subdirs: `docs/`, `static/`, `spec/`, `api/`, `scripts/`
-- Build output: `build/`, `dist/`, `target/`
-- Per-app directories in multi-app repos
+### Tier 1 — Cached recipe replay
 
-If found:
-- **JSON OpenAPI 3.x**: Copy directly.
-- **YAML**: Convert to JSON using Python (`yaml.safe_load` → `json.dump`).
-- **Swagger 2.x**: Copy as-is (still valid for reference; note in meta as `swagger_2`).
+If `.reef/source-recipes.json` has a recipe for this repo/app, try it first. Cached recipes always store runtime extraction commands (never file copies), so replaying them produces a fresh spec from current code.
 
-Save to `<reef-root>/sources/apis/{service}/{sub}/openapi.json`.
-Write `openapi.meta.json` alongside it.
-
-Report: "Found existing OpenAPI spec at `docs/openapi.json` — copying to `sources/apis/cdm/breast/openapi.json`."
-
-**Move to the next repo/app.** Do not attempt further tiers.
-
-### Tier 2 — Cached recipe replay
-
-If `.reef/source-recipes.json` has a recipe for this repo/app, try it first:
-
-1. Read the cached recipe (app path, env stubs, dep stubs).
+1. Read the cached recipe (app path, env stubs, dep stubs, command).
 2. Re-create any dependency stubs in a temp directory.
 3. Run the cached command.
 4. If it succeeds, save the output as `openapi.json` and move on.
-5. If it fails, discard the recipe and fall through to Tier 3.
+5. If it fails, discard the recipe and fall through to Tier 2.
 
 Report: "Replaying cached recipe for ctl-data-server..."
 
-### Tier 3 — Runtime extraction (max 5 attempts)
+### Tier 2 — Runtime extraction (max 5 attempts)
 
 This tier tries to import the application and dump its API schema at runtime.
 
@@ -296,7 +278,7 @@ const { SwaggerModule } = require('@nestjs/swagger');
    - **Broken venv / wrong Python version**: Use `uv` to create a fresh venv with the right Python version.
    - **Other import error**: Read the full traceback. If fixable, fix and retry. If fundamental (requires a running database, C extension), give up.
 
-8. **After 5 failed attempts** — report what went wrong, fall through to Tier 4.
+8. **After 5 failed attempts** — report what went wrong, fall through to Tier 3 (existing spec) or Tier 4 (code reading).
 
 **Stub creation — the simple stub:**
 ```python
@@ -352,9 +334,39 @@ The key insight: `check_authorization` is used as `@check_authorization(resource
 
 **Important:** Create stubs in a temp directory. Add to `PYTHONPATH` / `NODE_PATH`. Clean up after extraction. Never modify the source repo.
 
-### Tier 4 — Structured code reading (fallback)
+### Tier 3 — Existing spec with staleness warning (fallback)
 
-If all runtime extraction attempts fail, read the code directly and produce a **minimal OpenAPI 3.0 JSON spec** (not markdown):
+If runtime extraction fails (environment too complex, requires running database, C extensions, etc.), check for existing spec files as a last resort.
+
+Search for existing API specs in these locations:
+- Repo root: `openapi.json`, `openapi.yaml`, `swagger.json`, `swagger.yaml`
+- Common subdirs: `docs/`, `static/`, `spec/`, `api/`, `scripts/`
+- Build output: `build/`, `dist/`, `target/`
+- Per-app directories in multi-app repos
+
+If found:
+- **JSON OpenAPI 3.x**: Copy directly.
+- **YAML**: Convert to JSON using Python (`yaml.safe_load` → `json.dump`).
+- **Swagger 2.x**: Copy as-is (still valid for reference; note in meta as `swagger_2`).
+
+**Staleness check:** Compare the spec file's `git log -1 --format=%ci <spec-file>` date against the most recent commit touching route/controller files. If the spec is older, add a warning to the meta file:
+
+```json
+{
+  "extraction_tier": 3,
+  "extraction_method": "existing spec (static file)",
+  "staleness_warning": "Spec file last modified 2025-11-03. Route files modified as recently as 2026-04-09. Spec may be outdated.",
+  "route_files_last_modified": "2026-04-09"
+}
+```
+
+Report with the warning: "Copied existing spec for cdm/breast — but the spec file is 5 months older than the latest route changes. Endpoints may be missing or outdated."
+
+**If no existing spec found either**, fall through to Tier 4.
+
+### Tier 4 — Structured code reading (last resort)
+
+If both runtime extraction and existing specs fail, read the code directly. This produces a spec from today's code (so it's current), but may be incomplete — computed routes, dynamic registrations, or inherited endpoints could be missing.
 
 1. **Find all route/controller files** using the framework signal from Step 1.
 2. **Read every route file.** Extract: HTTP method, path, handler name, request/response types if annotated, auth guards/middleware, tags/groups.
@@ -396,7 +408,7 @@ If all runtime extraction attempts fail, read the code directly and produce a **
 
 Include ALL endpoints. Group by tags. Note auth requirements. The output must be valid JSON parseable as OpenAPI.
 
-Write `openapi.meta.json` with `"extraction_tier": 4` so downstream consumers know the depth.
+Write `openapi.meta.json` with `"extraction_tier": 4`.
 
 Report: "Runtime extraction failed for ctl-data-server (missing MongoDB connection at import time). Fell back to code reading — 47 endpoints extracted, saved as OpenAPI JSON."
 
@@ -406,23 +418,11 @@ Report: "Runtime extraction failed for ctl-data-server (missing MongoDB connecti
 
 For each repo/app where an ORM/ODM was detected, follow the tiers in order.
 
-### Tier 1 — Copy existing schema
+### Tier 1 — Cached recipe replay
 
-Search for existing schema files:
-- Prisma: `prisma/schema.prisma` (convert to Mermaid ERD)
-- Existing ERDs: `docs/erd.md`, `docs/schema.md`, `docs/database.md`
-- SQL dumps: `schema.sql`, `db/schema.sql`
-- SQL migrations: `migrations/`, `alembic/versions/`, `db/migration/`
+Same as API tier 1. If a cached ERD recipe exists, replay it.
 
-For SQL migrations: read the migration files (especially consolidated or latest migrations) and reconstruct the schema from `CREATE TABLE` / `op.create_table()` statements.
-
-Save to `<reef-root>/sources/schemas/{service}/{sub}/schema.md`.
-
-### Tier 2 — Cached recipe replay
-
-Same as API tier 2. If a cached ERD recipe exists, replay it.
-
-### Tier 3 — Runtime extraction (max 5 attempts)
+### Tier 2 — Runtime extraction (max 5 attempts)
 
 Use the repo's package manager (detected in Step 1) for all Python commands.
 
@@ -443,13 +443,24 @@ inspector = inspect(engine)
 poetry run python3 manage.py inspectdb
 ```
 
-**Beanie/Mongoose:** Read the document class definitions (these are typically self-describing — fields, validators, indexes are all in the class). No runtime extraction needed — treat as tier 4.
-
-**Alembic:** Read the latest or consolidated migration file. It contains the ground-truth schema as `op.create_table(...)` calls. No runtime extraction needed — treat as tier 1 if migration files exist.
+**Alembic:** Read the latest or consolidated migration file. It contains the ground-truth schema as `op.create_table(...)` calls. These are runtime-derived (generated by Alembic from the live models), so they are reliable ground truth.
 
 Same 5-attempt protocol as API extraction. Same stub/env patterns. Same package manager requirement — never use bare `python3`.
 
-### Tier 4 — Direct code reading (fallback)
+### Tier 3 — Existing schema with staleness warning
+
+Search for existing schema files as a fallback:
+- Prisma: `prisma/schema.prisma` (convert to Mermaid ERD)
+- Existing ERDs: `docs/erd.md`, `docs/schema.md`, `docs/database.md`
+- SQL dumps: `schema.sql`, `db/schema.sql`
+
+Apply the same staleness check as API tier 3 — compare file date against latest model file changes.
+
+**Beanie/Mongoose:** Read the document class definitions (these are typically self-describing — fields, validators, indexes are all in the class). This is effectively code reading but the model files ARE the schema, so it is reliable. Treat as tier 3.
+
+Save to `<reef-root>/sources/schemas/{service}/{sub}/schema.md`.
+
+### Tier 4 — Direct code reading (last resort)
 
 1. **Find all model/entity files** using ORM signals.
 2. **Read every model file.** Extract: class/struct names, field names, field types, primary keys, foreign keys, relationships, indexes.
@@ -492,23 +503,26 @@ After all repos are processed, write `.reef/source-recipes.json`:
   "recipes": {
     "cdm/breast": {
       "api": {
-        "tier": 1,
-        "method": "existing openapi.json",
-        "source_path": "applications/breast/openapi.json",
+        "tier": 2,
+        "method": "fastapi_oneshot",
+        "command": "python3 -c \"from app.main import app; import json; print(json.dumps(app.openapi(), indent=2))\"",
+        "app_path": "applications/breast/src",
+        "env_stubs": {"DB_HOST": "localhost", "AUTH_SECRET": "stub"},
+        "dep_stubs": ["aipf_authz_client"],
         "output": "sources/apis/cdm/breast/openapi.json",
         "last_success": "2026-04-11"
       },
       "erd": {
-        "tier": 4,
-        "method": "SQLAlchemy model reading",
-        "source_path": "applications/breast/src/app/models/",
+        "tier": 2,
+        "method": "alembic_migration_reading",
+        "source_path": "applications/breast/alembic/versions/",
         "output": "sources/schemas/cdm/breast/schema.md",
         "last_success": "2026-04-11"
       }
     },
     "ctl": {
       "api": {
-        "tier": 3,
+        "tier": 2,
         "method": "fastapi_oneshot",
         "command": "python3 -c \"from app.main import app; import json; print(json.dumps(app.openapi(), indent=2))\"",
         "app_path": "src",
@@ -524,7 +538,7 @@ After all repos are processed, write `.reef/source-recipes.json`:
 ```
 
 - Recipe keys use the service/sub path (matching the output directory), not repo names.
-- Only cache recipes that succeeded.
+- **Only cache runtime extraction recipes** (tier 2). Never cache tier 3 (existing file copies) — those would just replay a stale copy forever.
 - Set `null` for repos with no API or no data layer.
 - The `tier` field records which tier succeeded, for diagnostics.
 
@@ -546,11 +560,11 @@ Source extraction complete:
 
 | Service | App              | API                  | ERD                  |
 |---------|------------------|----------------------|----------------------|
-| CDM     | breast           | tier 1 (existing)    | tier 4 (code reading)|
-| CDM     | chest            | tier 1 (existing)    | tier 4 (code reading)|
-| CTL     | —                | tier 3 (runtime)     | tier 4 (code reading)|
-| DAIP    | authz            | tier 1 (existing)    | tier 1 (migrations)  |
-| RDP     | prefect-gateway  | tier 3 (runtime)     | —                    |
+| CDM     | breast           | tier 2 (runtime)     | tier 2 (Alembic)     |
+| CDM     | chest            | tier 2 (runtime)     | tier 2 (Alembic)     |
+| CTL     | —                | tier 2 (runtime)     | tier 3 (Beanie models)|
+| DAIP    | authz            | tier 2 (runtime/swag)| tier 2 (migrations)  |
+| RDP     | prefect-gateway  | tier 2 (runtime)     | —                    |
 
 Recipes cached to .reef/source-recipes.json for future runs.
 ```
@@ -568,11 +582,11 @@ Then suggest next step:
 When `/reef:source` is run again (e.g., after code changes or via `/reef:update`):
 
 1. Load `.reef/source-recipes.json`.
-2. For each repo with a cached recipe, try the cached recipe first (Tier 2).
-3. If the cached recipe fails (dependency changed, new env var, etc.), fall through to the full tiered protocol starting at Tier 1.
+2. For each repo with a cached recipe, try the cached recipe first (Tier 1). Since only runtime recipes are cached, replaying always produces fresh output from current code.
+3. If the cached recipe fails (dependency changed, new env var, etc.), fall through to Tier 2 (fresh runtime extraction).
 4. Update the recipe cache with any new successes.
 
-This means first runs are slow (discovery + stubbing), but repeat runs are fast (replay cached commands).
+This means first runs are slow (discovery + stubbing), but repeat runs are fast (replay cached runtime commands). Every run produces live-truth specs — never stale copies.
 
 ---
 
