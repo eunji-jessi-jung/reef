@@ -73,8 +73,8 @@ Before any Socratic questioning, upgrade snorkel-draft artifacts using the full 
 
 ```
 Upgraded N artifacts from extracted specs:
-- api-cdm-breast: 47 endpoints (was 12 in draft)
-- sch-cdm-breast: 23 tables (was 8 in draft)
+- api-payments-gateway: 47 endpoints (was 12 in draft)
+- sch-payments-gateway: 23 tables (was 8 in draft)
 - ...
 
 Ready for Socratic deepening. Where would you like to start?

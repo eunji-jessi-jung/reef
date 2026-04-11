@@ -39,31 +39,30 @@ sources/
 ```
 sources/
   apis/
-    cdm/
-      breast/openapi.json       # tier 2: runtime extracted
-      chest/openapi.json        # tier 2: runtime extracted
-      manufacturer/openapi.json # tier 2: runtime extracted
-      inference-result/openapi.json  # tier 2: runtime extracted
-    ctl/
-      openapi.json              # tier 2: runtime extracted (single-app repo)
-    daip/
-      authz/openapi.json        # tier 2: runtime extracted (swag)
-      data-lineage/openapi.json # tier 2: runtime extracted
-    rdp/
-      prefect-gateway/openapi.json  # tier 2: runtime extracted
+    payments/
+      gateway/openapi.json       # tier 2: runtime extracted
+      ledger/openapi.json        # tier 2: runtime extracted
+      admin/openapi.json         # tier 2: runtime extracted
+    orders/
+      openapi.json               # tier 2: runtime extracted (single-app repo)
+    platform/
+      auth/openapi.json          # tier 2: runtime extracted (swag)
+      analytics/openapi.json     # tier 2: runtime extracted
+    pipeline/
+      gateway/openapi.json       # tier 2: runtime extracted
   schemas/
-    cdm/
-      breast/schema.md
-      chest/schema.md
-    ctl/
+    payments/
+      gateway/schema.md
+      ledger/schema.md
+    orders/
       schema.md
-    daip/
-      authz/schema.md
+    platform/
+      auth/schema.md
 ```
 
 **Naming rules:**
 - Service names from `project.json` `services[].name`, lowercased.
-- Sub-application names from the repo structure (e.g., `applications/breast/` → `breast`). If the repo is a single app, no sub-directory.
+- Sub-application names from the repo structure (e.g., `applications/gateway/` → `gateway`). If the repo is a single app, no sub-directory.
 - API specs are always `openapi.json` — never `.md`, never `.yaml`.
 - ERDs are always `schema.md`.
 - Each spec gets a companion `openapi.meta.json` recording provenance.
@@ -71,12 +70,12 @@ sources/
 **Meta file format:**
 ```json
 {
-  "service": "cdm",
-  "sub": "breast",
-  "source_repo": "csg-case-curator-backend",
-  "extraction_tier": 1,
-  "extraction_method": "existing openapi.json",
-  "source_path": "applications/breast/openapi.json",
+  "service": "payments",
+  "sub": "gateway",
+  "source_repo": "payments-backend",
+  "extraction_tier": 2,
+  "extraction_method": "fastapi runtime (poetry)",
+  "source_path": "applications/gateway/src/app/main.py",
   "extracted_at": "2026-04-11T10:35:00Z"
 }
 ```
@@ -142,20 +141,20 @@ For each source repo, scan dependency files to identify API frameworks and ORMs:
 
 **This is critical for tier 2 (runtime extraction).** Running bare `python3` will fail for most repos because dependencies are installed in the project's virtual environment, not system Python. Always use the package manager's run command.
 
-**Multi-app repos:** Some repos contain multiple applications (e.g., an Nx monorepo with `applications/breast/`, `applications/chest/`). Detect each sub-application separately. Check for per-app dependency files and entry points. The package manager may be at the repo root (shared) or per-app.
+**Multi-app repos:** Some repos contain multiple applications (e.g., an Nx monorepo with `applications/gateway/`, `applications/ledger/`). Detect each sub-application separately. Check for per-app dependency files and entry points. The package manager may be at the repo root (shared) or per-app.
 
 Report what was detected:
 
 ```
 Tech stacks detected:
 
-| Service | Repo / App              | API Framework | ORM/ODM      | DB         | Pkg Mgr |
-|---------|-------------------------|---------------|--------------|------------|---------|
-| CDM     | cc-backend/breast       | FastAPI       | SQLAlchemy   | PostgreSQL | poetry  |
-| CDM     | cc-backend/chest        | FastAPI       | SQLAlchemy   | PostgreSQL | poetry  |
-| CTL     | ctl-data-server         | FastAPI       | Beanie       | MongoDB    | poetry  |
-| DAIP    | aipf-authz-api          | Go (swag)     | SQL migrations | PostgreSQL | —     |
-| RDP     | rdp-prefect-gateway     | FastAPI       | —            | —          | uv      |
+| Service  | Repo / App              | API Framework | ORM/ODM      | DB         | Pkg Mgr |
+|----------|-------------------------|---------------|--------------|------------|---------|
+| Payments | pay-backend/gateway     | FastAPI       | SQLAlchemy   | PostgreSQL | poetry  |
+| Payments | pay-backend/ledger      | FastAPI       | SQLAlchemy   | PostgreSQL | poetry  |
+| Orders   | order-service           | FastAPI       | Beanie       | MongoDB    | poetry  |
+| Platform | platform-auth-api       | Go (swag)     | SQL migrations | PostgreSQL | —     |
+| Pipeline | pipeline-gateway        | FastAPI       | —            | —          | uv      |
 ```
 
 ---
@@ -195,7 +194,7 @@ For each repo/app:
    - Go repo but no `go` or `swag` installed → skip to tier 3
    - Java/Kotlin repo but no JVM → skip to tier 3
    - Broken venv AND no `uv` or `poetry` to fix it → skip to tier 3
-   - Report: "Skipping runtime extraction for daip/authz — Go project but `swag` is not installed on this machine."
+   - Report: "Skipping runtime extraction for platform/auth — Go project but `swag` is not installed on this machine."
 
 4. **Fix broken venvs (if tools available).** If a venv is broken and `uv` is available:
    ```bash
@@ -222,13 +221,13 @@ Report the pre-flight results:
 ```
 Pre-flight checks:
 
-| Service | App              | Venv    | Pkg Mgr         | Runtime possible? |
-|---------|------------------|---------|-----------------|-------------------|
-| CDM     | breast           | broken  | uv (as module)  | yes (after fix)   |
-| CDM     | chest            | broken  | uv (as module)  | yes (after fix)   |
-| CTL     | data-server      | healthy | poetry          | yes               |
-| DAIP    | authz            | n/a     | go (missing)    | no — skip to t3   |
-| DAIP    | data-lineage     | n/a     | n/a (Marquez)   | no — skip to t3   |
+| Service  | App              | Venv    | Pkg Mgr         | Runtime possible? |
+|----------|------------------|---------|-----------------|-------------------|
+| Payments | gateway          | broken  | uv (as module)  | yes (after fix)   |
+| Payments | ledger           | broken  | uv (as module)  | yes (after fix)   |
+| Orders   | —                | healthy | poetry          | yes               |
+| Platform | auth             | n/a     | go (missing)    | no — skip to t3   |
+| Platform | analytics        | n/a     | n/a (fork)      | no — skip to t3   |
 ```
 
 ---
@@ -247,7 +246,7 @@ Check if the user has already placed a file at `sources/apis/{service}/{sub}/ope
 
 Write or update `openapi.meta.json` with `"extraction_tier": 0, "extraction_method": "user-provided"`.
 
-Report: "Using user-provided spec for daip/authz."
+Report: "Using user-provided spec for platform/auth."
 
 **Move to the next repo/app.** Do not attempt further tiers.
 
@@ -261,7 +260,7 @@ If `.reef/source-recipes.json` has a recipe for this repo/app, try it first. Cac
 4. If it succeeds, save the output as `openapi.json` and move on.
 5. If it fails, discard the recipe and fall through to Tier 2.
 
-Report: "Replaying cached recipe for ctl-data-server..."
+Report: "Replaying cached recipe for orders..."
 
 ### Tier 2 — Runtime extraction (max 5 attempts)
 
@@ -397,14 +396,14 @@ When the simple stub fails because the code imports specific sub-modules and cla
     exceptions.py                  # class ApiException(Exception): pass
     decorators/
       __init__.py
-      authz_decorators.py          # see decorator pattern below
+      auth_decorators.py           # see decorator pattern below
 ```
 
 **Decorator stub pattern** — when a private package provides decorators used in route definitions:
 ```python
-# decorators/authz_decorators.py
-class AuthzConfig: pass
-class AuthzError(Exception): pass
+# decorators/auth_decorators.py
+class AuthConfig: pass
+class AuthError(Exception): pass
 
 def check_authorization(*args, **kwargs):
     """Return a no-op decorator that preserves the original function."""
@@ -443,7 +442,7 @@ If found:
 }
 ```
 
-Report with the warning: "Copied existing spec for cdm/breast — but the spec file is 5 months older than the latest route changes. Endpoints may be missing or outdated."
+Report with the warning: "Copied existing spec for payments/gateway — but the spec file is 5 months older than the latest route changes. Endpoints may be missing or outdated."
 
 **If no existing spec found either**, fall through to Tier 4.
 
@@ -459,7 +458,7 @@ If both runtime extraction and existing specs fail, read the code directly. This
 {
   "openapi": "3.0.0",
   "info": {
-    "title": "CTL Data Server API",
+    "title": "Order Service API",
     "version": "extracted",
     "description": "Extracted by reading source code directly (tier 4). May be incomplete — computed routes, dynamic registrations, or inherited endpoints could be missing."
   },
@@ -493,7 +492,7 @@ Include ALL endpoints. Group by tags. Note auth requirements. The output must be
 
 Write `openapi.meta.json` with `"extraction_tier": 4`.
 
-Report: "Runtime extraction failed for ctl-data-server (missing MongoDB connection at import time). Fell back to code reading — 47 endpoints extracted, saved as OpenAPI JSON."
+Report: "Runtime extraction failed for order-service (missing MongoDB connection at import time). Fell back to code reading — 47 endpoints extracted, saved as OpenAPI JSON."
 
 ---
 
@@ -588,26 +587,26 @@ After all repos are processed, write `.reef/source-recipes.json`:
 {
   "version": 1,
   "recipes": {
-    "cdm/breast": {
+    "payments/gateway": {
       "api": {
         "tier": 2,
         "method": "fastapi_oneshot",
         "command": "python3 -c \"from app.main import app; import json; print(json.dumps(app.openapi(), indent=2))\"",
-        "app_path": "applications/breast/src",
+        "app_path": "applications/gateway/src",
         "env_stubs": {"DB_HOST": "localhost", "AUTH_SECRET": "stub"},
-        "dep_stubs": ["aipf_authz_client"],
-        "output": "sources/apis/cdm/breast/openapi.json",
+        "dep_stubs": ["internal_auth_client"],
+        "output": "sources/apis/payments/gateway/openapi.json",
         "last_success": "2026-04-11"
       },
       "erd": {
         "tier": 2,
         "method": "alembic_migration_reading",
-        "source_path": "applications/breast/alembic/versions/",
-        "output": "sources/schemas/cdm/breast/schema.md",
+        "source_path": "applications/gateway/alembic/versions/",
+        "output": "sources/schemas/payments/gateway/schema.md",
         "last_success": "2026-04-11"
       }
     },
-    "ctl": {
+    "orders": {
       "api": {
         "tier": 2,
         "method": "fastapi_oneshot",
@@ -615,7 +614,7 @@ After all repos are processed, write `.reef/source-recipes.json`:
         "app_path": "src",
         "env_stubs": {"DB_HOST": "localhost", "AUTH_SECRET": "stub"},
         "dep_stubs": ["internal_auth_client"],
-        "output": "sources/apis/ctl/openapi.json",
+        "output": "sources/apis/orders/openapi.json",
         "last_success": "2026-04-11"
       },
       "erd": null
@@ -647,22 +646,20 @@ Source extraction complete.
 
 Live truth (runtime-extracted from today's code):
 
-| Service | App              | API          | ERD              |
-|---------|------------------|--------------|------------------|
-| CDM     | breast           | 70 endpoints | 30 tables        |
-| CDM     | chest            | 63 endpoints | 28 tables        |
-| CDM     | manufacturer     | 10 endpoints | 4 tables         |
-| CDM     | inference-result | 8 endpoints  | 3 collections    |
-| CTL     | authenticator    | 8 endpoints  | 1 collection     |
-| CTL     | data-server      | 87 endpoints | 7 collections    |
-| RDP     | prefect-gateway  | 6 endpoints  | —                |
+| Service  | App              | API          | ERD              |
+|----------|------------------|--------------|------------------|
+| Payments | gateway          | 70 endpoints | 30 tables        |
+| Payments | ledger           | 63 endpoints | 28 tables        |
+| Payments | admin            | 10 endpoints | 4 tables         |
+| Orders   | —                | 87 endpoints | 7 collections    |
+| Pipeline | gateway          | 6 endpoints  | —                |
 
 Not live truth (may be outdated):
 
-| Service | App           | API                              | ERD              | Why                        |
-|---------|---------------|----------------------------------|------------------|----------------------------|
-| DAIP    | authz         | 66 endpoints (8 months stale)    | 16 tables (migr) | Go — no swag on machine    |
-| DAIP    | data-lineage  | 28 endpoints (unknown freshness) | —                | Marquez fork, non-standard |
+| Service  | App           | API                              | ERD              | Why                        |
+|----------|---------------|----------------------------------|------------------|----------------------------|
+| Platform | auth          | 66 endpoints (8 months stale)    | 16 tables (migr) | Go — no swag on machine    |
+| Platform | analytics     | 28 endpoints (unknown freshness) | —                | Fork of OSS project        |
 
 Recipes cached to .reef/source-recipes.json for future runs.
 ```
@@ -673,8 +670,8 @@ Recipes cached to .reef/source-recipes.json for future runs.
 Two specs could not be runtime-extracted and may be outdated.
 You can replace them with up-to-date versions:
 
-  sources/apis/daip/authz/openapi.json      — place a valid OpenAPI 3.x JSON file here
-  sources/apis/daip/data-lineage/openapi.json — place a valid OpenAPI 3.x JSON file here
+  sources/apis/platform/auth/openapi.json      — place a valid OpenAPI 3.x JSON file here
+  sources/apis/platform/analytics/openapi.json — place a valid OpenAPI 3.x JSON file here
 
 The directory structure is already in place. Drop in your files and
 run /reef:source again — it will detect them as user-provided (tier 0)
