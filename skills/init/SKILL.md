@@ -44,8 +44,9 @@ Then print a compact orientation block:
 - Sweet spot: 3-15 repos that form one domain or team ecosystem
   (Bigger org? One reef per team — not one reef for everything)
 - 3 quick questions from you, then full automation
-- ~10-15 min, ~50-80k tokens depending on codebase size
-- Output: draft artifacts + question bank in plain markdown
+- ~15-20 min, ~200-300k tokens depending on codebase size
+  (Free for Max subscribers; on API: roughly $10-20 one-time)
+- Output: draft artifacts + API specs + ERDs + question bank
 - After init: /reef:scuba to deepen, /reef:feed to add docs
 ```
 
