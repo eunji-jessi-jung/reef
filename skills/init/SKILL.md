@@ -186,6 +186,14 @@ The user responds with numbers, ranges, or exclusions. Apply their answer.
 - Multiple sources: "Good — that is how Reef discovers cross-system contracts."
 - Single source: "You can add more later."
 
+**After selection, offer to pull latest:**
+
+> "Want me to `git pull` each repo to make sure they're up to date? (yes / no — I'll pull them myself / skip)"
+
+If yes: run `git -C <repo-path> pull` for each selected repo. Report results briefly ("3/3 up to date" or "repo-a: 5 commits pulled, repo-b: up to date"). If a pull fails (uncommitted changes, auth issue), warn and continue with the stale copy.
+
+If no or skip: move on.
+
 That is it for user input. Everything from here is automated.
 
 ---
