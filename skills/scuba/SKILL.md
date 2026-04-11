@@ -408,8 +408,10 @@ Then:
    ```bash
    python3 /Users/jessi/Projects/seaof-ai/reef/scripts/reef.py rebuild-index --reef <reef-root>
    python3 /Users/jessi/Projects/seaof-ai/reef/scripts/reef.py rebuild-map --reef <reef-root>
+   python3 /Users/jessi/Projects/seaof-ai/reef/scripts/reef.py lint --reef <reef-root>
    python3 /Users/jessi/Projects/seaof-ai/reef/scripts/reef.py log "Scuba Phase 1: generated N artifacts" --reef <reef-root>
    ```
+5. **Render health report** using the same Unicode box-drawing format as snorkel Step 7. This gives the user an immediate visual sense of how much richer the reef got from Phase 1.
 
 Then ask:
 
@@ -581,7 +583,10 @@ Use "Updated" instead of "Created" in the log message when updating an existing 
 - Track which questions have been covered in this session.
 - At natural pauses, summarize progress: artifacts created or updated, questions answered, remaining gaps.
 - The user can end the session at any time. Do not push to continue.
-- When the user ends the session, update `.reef/questions.json` to reflect what was answered.
+- When the user ends the session:
+  1. Update `.reef/questions.json` to reflect what was answered.
+  2. Run rebuild-index, rebuild-map, and lint.
+  3. **Render health report** — same Unicode box-drawing format as the Phase 1 briefing. Show the final artifact counts, coverage, and freshness so the user sees the full picture of what scuba produced.
 
 ---
 
