@@ -182,7 +182,25 @@ python3 /Users/jessi/Projects/seaof-ai/reef/scripts/reef.py snapshot <artifact-i
 
 ---
 
-## Step 5 — Update question bank
+## Step 5 — Bidirectional linking pass
+
+After all artifacts are written, do a linking pass to ensure the Obsidian graph is fully connected:
+
+1. Read the frontmatter of every artifact just generated.
+2. For each `relates_to` entry, check whether the target artifact links back. For example, if `SCH-ORDERS-CORE` has `relates_to: [{type: "parent", target: "[[SYS-ORDERS]]"}]`, then `SYS-ORDERS` must have a corresponding entry pointing to `SCH-ORDERS-CORE` (e.g., `{type: "refines", target: "[[SCH-ORDERS-CORE]]"}`).
+3. If the reverse link is missing, add it. Use the appropriate inverse relationship:
+   - `parent` ↔ `refines` (child→parent / parent→child)
+   - `depends_on` ↔ `feeds` (consumer→producer / producer→consumer)
+   - `constrains` — add reverse `constrains` on the target
+   - `integrates_with` — always bidirectional, add if missing
+4. Also ensure the `## Related` section's wikilinks match the updated `relates_to` frontmatter.
+5. Re-snapshot any artifact that was modified.
+
+This pass is critical for Obsidian graph view — unlinked nodes appear as disconnected islands.
+
+---
+
+## Step 6 — Update question bank
 
 After generating artifacts, update `.reef/questions.json`:
 
@@ -194,7 +212,7 @@ This gives `/reef:test` and `/reef:scuba` a clear picture of what's covered and 
 
 ---
 
-## Step 6 — Wrap up
+## Step 7 — Wrap up
 
 Run:
 ```bash
@@ -209,7 +227,27 @@ python3 /Users/jessi/Projects/seaof-ai/reef/scripts/reef.py lint --reef <reef-ro
 python3 /Users/jessi/Projects/seaof-ai/reef/scripts/reef.py diff --reef <reef-root>
 ```
 
-Render a compact health summary using the `/reef:health` report format (text table with Unicode box-drawing). This gives the user an immediate visual sense of coverage and freshness.
+Render a compact health summary using this exact format (copy the Unicode box-drawing characters directly):
+
+```
+Reef Health — {project name}                         {date}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Sources          Files    Seen   Deep   Freshness
+────────────────────────────────────────────────
+{source}         {N}      {N}    {N}    {bar} {status}
+
+Artifacts        Total    Fresh  Aging  Stale  Errors
+────────────────────────────────────────────────
+{TYPE-}          {N}      {N}    {N}    {N}    {N}
+
+Issues: {N} errors · {N} warnings · {N} info
+```
+
+**Freshness bar:** 8 characters wide using `█` (filled) and `░` (empty), proportional to coverage. Example: `████████░░` = fresh, `██░░░░░░░░` = stale.
+**Freshness status:** `fresh` (no source changes), `aging` (some changes), `stale` (many changes or old `last_verified`).
+
+Populate from lint and diff output. Show every source and artifact type, even if counts are zero. This table must render completely — do not skip or truncate it.
 
 Summarize:
 - Artifacts created (list IDs and one-line descriptions)

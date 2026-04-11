@@ -16,7 +16,9 @@ Walk up from cwd looking for a `.reef/` directory. That parent is the reef root.
 
 ### 2. Open in Obsidian
 
-Attempt to open the reef root as an Obsidian vault.
+Attempt to open the reef root as an Obsidian vault. The `obsidian://open?path=` URI **only works for vaults already registered in Obsidian**. For new reefs that haven't been opened before, this URI will silently fail or do nothing.
+
+**Step 2a — Try the URI (for already-registered vaults):**
 
 **macOS:**
 ```bash
@@ -28,7 +30,21 @@ open "obsidian://open?path=<reef-root>"
 xdg-open "obsidian://open?path=<reef-root>"
 ```
 
-If the command fails (non-zero exit code or Obsidian is not installed), fall back to opening the directory in the system file manager:
+**Step 2b — If this is likely the first time** (`.reef/obsidian_opened` does not exist), the URI probably won't work. Fall back to opening Obsidian directly:
+
+**macOS:**
+```bash
+open -a "Obsidian"
+```
+
+**Linux:**
+```bash
+obsidian &
+```
+
+Then tell the user: "Obsidian is open. To add this reef as a vault, click 'Open folder as vault' and select: `<reef-root>`"
+
+**Step 2c — If Obsidian is not installed**, fall back to the file manager:
 
 **macOS:**
 ```bash
@@ -40,7 +56,7 @@ open "<reef-root>"
 xdg-open "<reef-root>"
 ```
 
-Report which method was used: "Opening in Obsidian..." or "Obsidian not available — opening in Finder..."
+Report: "Obsidian not found — opening the reef directory in Finder instead. Install Obsidian for graph visualization."
 
 ### 3. First-open guidance
 
