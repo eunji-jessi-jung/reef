@@ -253,26 +253,55 @@ const { SwaggerModule } = require('@nestjs/swagger');
 "
 ```
 
-**For monorepos with shared libraries** (e.g., `libraries/backend-core/src/`), add all library source directories to PYTHONPATH. Run the command from the app directory if each app has its own pyproject.toml, or from the repo root if there's a single shared one.
-
 **Protocol for each attempt:**
 
 1. **Find the app entry point.** Read `main.py`, `app.py`, `main.go`, `index.ts`, etc. Identify the app object and its import path.
-2. **Identify the package manager and working directory.** Use the detected package manager from Step 1. For monorepos, run from the directory that contains the `pyproject.toml` / `poetry.lock`.
-3. **Run the extraction command** using `poetry run` / `uv run` / `pipenv run`.
-4. **If it succeeds** — save output as `openapi.json`, write meta, cache the recipe, move on.
-5. **If it fails** — read the error message carefully:
-   - **Missing environment variable** (e.g., `KeyError: 'DB_HOST'`): Add a dummy value (`"localhost"`, `"stub"`, `"true"`, `"[]"`, `"{}"`) and retry. For JSON-valued env vars, use the appropriate empty structure.
-   - **Missing private package** (e.g., `ModuleNotFoundError: No module named 'internal_auth_client'`): Create a minimal stub package in a temp directory and add to `PYTHONPATH`. Retry.
-   - **Missing sub-module of a private package** (e.g., `No module named 'internal_auth_client.api.permissions_api'`): Extend the stub with the specific sub-module structure. Create nested `__init__.py` files with stub classes.
-   - **Pydantic/Settings validation error**: The app uses Pydantic Settings and a required env var is missing or has the wrong type. Read the Settings class to understand what it expects, then set all required env vars.
-   - **Other import error**: Read the full traceback. Identify the root cause. If it's a fixable configuration issue (missing config file, wrong working directory), fix and retry. If it's fundamental (requires a running database connection at import time, C extension not compiled), give up.
-6. **After 5 failed attempts** — report what went wrong, fall through to Tier 4.
 
-**Stub creation pattern** (for missing private packages):
+2. **Pre-read the config/settings class BEFORE your first attempt.** This is the single most impactful step — it prevents 2-3 wasted attempts on missing env vars. Look for:
+   - Pydantic `BaseSettings` classes (common in FastAPI apps)
+   - Config dataclasses or plain classes reading `os.environ`
+   - `.env.example` or `.env.template` files
+   
+   From the settings class, extract ALL required env vars and set dummy values upfront. Common patterns:
+   - Database URLs: `"localhost"`, `"stub"`, `"5432"`, `"27017"`
+   - Auth/JWT secrets: `"stub"`
+   - URLs: `"https://stub"`
+   - JSON-valued vars: `"[]"`, `"{}"`, `'{"key": "stub"}'`
+   - Boolean flags: `"true"`, `"false"`
+   - Cache/timeout values: `"30"`, `"512"`
+
+3. **Build the PYTHONPATH for monorepos.** If the repo has shared libraries (e.g., `libraries/backend-core/src/`), add ALL library source directories to PYTHONPATH. Example for a monorepo with 4 shared libraries:
+   ```
+   PYTHONPATH=app/src:libraries/backend-core/src:libraries/auth/src:libraries/cc-schema/src:libraries/cc-primitive/src:<stubs-dir>
+   ```
+
+4. **Identify the package manager and working directory.** Use the detected package manager from Step 1. For monorepos, run from the directory that contains the `pyproject.toml` / `poetry.lock`. If the project's venv is broken or missing, use `uv` as a fallback:
+   ```bash
+   # Create a fresh venv and install deps
+   uv venv --python 3.11
+   uv pip install -r <(poetry export -f requirements.txt --without-hashes 2>/dev/null || echo "")
+   # Or install key packages directly
+   uv pip install fastapi uvicorn pydantic sqlalchemy
+   ```
+
+5. **Run the extraction command** using `poetry run` / `uv run` / `pipenv run`.
+
+6. **If it succeeds** — save output as `openapi.json`, write meta, cache the recipe (including env stubs and PYTHONPATH), move on.
+
+7. **If it fails** — read the error message carefully:
+   - **Missing environment variable** (e.g., `KeyError: 'DB_HOST'`): You missed it in the pre-read. Add the dummy value and retry.
+   - **Missing private package from a private registry** (e.g., `ModuleNotFoundError: No module named 'internal_auth_client'`): This is common in enterprise repos. The package is hosted on a private PyPI/Artifact Registry and can't be pip-installed without auth. Create a comprehensive stub — see below.
+   - **Missing sub-module** (e.g., `No module named 'auth_client.api.permissions_api'`): The stub needs deeper structure. Read the import statements in the traceback to understand exactly which sub-modules and classes are needed.
+   - **Decorator/function signature mismatch**: Some stubs need to return actual decorators, not just `None`. If a stub is used as `@check_authorization(...)`, the stub must return a callable that returns a decorator. See stub patterns below.
+   - **Broken venv / wrong Python version**: Use `uv` to create a fresh venv with the right Python version.
+   - **Other import error**: Read the full traceback. If fixable, fix and retry. If fundamental (requires a running database, C extension), give up.
+
+8. **After 5 failed attempts** — report what went wrong, fall through to Tier 4.
+
+**Stub creation — the simple stub:**
 ```python
-# Create temp dir with: <package_name>/__init__.py
-# __init__.py contains:
+# For packages where only top-level import matters
+# <stub-dir>/<package_name>/__init__.py
 class _Stub:
     def __init__(self, *a, **kw): pass
     def __getattr__(self, name): return lambda *a, **kw: None
@@ -282,22 +311,44 @@ def __getattr__(name):
     return _Stub()
 ```
 
-For packages that need specific sub-modules (common with generated API clients):
+**Stub creation — the comprehensive stub (for generated API clients, auth libraries):**
+
+When the simple stub fails because the code imports specific sub-modules and classes, build a deeper structure. This is common with generated API clients (OpenAPI-generated SDKs):
+
 ```
 <stub-dir>/
   <package_name>/
-    __init__.py          # module-level __getattr__ returning _Stub()
+    __init__.py                    # module-level __getattr__
     api/
-      __init__.py        # same pattern
-      specific_api.py    # class SpecificApi: ...
+      __init__.py                  # module-level __getattr__
+      permissions_api.py           # class PermissionsApi: def __init__(self, api_client=None): pass
+      resource_api.py              # class ResourceApi: ...
+      user_api.py                  # class UserApi: ...
     models/
+      __init__.py                  # module-level __getattr__
+    rest.py                        # class RESTResponse: status=200; data=b'{}'
+    api_client.py                  # class ApiClient: def __init__(self, configuration=None): ...
+    configuration.py               # class Configuration: def __init__(self, host=None): ...
+    exceptions.py                  # class ApiException(Exception): pass
+    decorators/
       __init__.py
-    rest.py              # class RESTResponse: status=200; data=b'{}'
-    configuration.py     # class Configuration: ...
-    exceptions.py        # class ApiException(Exception): pass
+      authz_decorators.py          # see decorator pattern below
 ```
 
-This deeper stub structure handles packages where the importing code does `from package.api.specific_api import SpecificApi` rather than just `import package`.
+**Decorator stub pattern** — when a private package provides decorators used in route definitions:
+```python
+# decorators/authz_decorators.py
+class AuthzConfig: pass
+class AuthzError(Exception): pass
+
+def check_authorization(*args, **kwargs):
+    """Return a no-op decorator that preserves the original function."""
+    def decorator(fn):
+        return fn
+    return decorator
+```
+
+The key insight: `check_authorization` is used as `@check_authorization(resource=..., action=...)` — it must be a function that returns a decorator, not a plain function. Getting this wrong causes `TypeError: 'NoneType' object is not callable`.
 
 **Important:** Create stubs in a temp directory. Add to `PYTHONPATH` / `NODE_PATH`. Clean up after extraction. Never modify the source repo.
 
