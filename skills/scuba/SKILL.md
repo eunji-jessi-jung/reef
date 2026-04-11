@@ -1,10 +1,25 @@
 ---
-description: "Deepen knowledge through Socratic questioning"
+description: "Deepen knowledge through automated analysis and Socratic questioning"
 ---
 
 # /reef:scuba
 
-Interactive, question-driven knowledge extraction. The user teaches Claude what matters; Claude produces deep, accurate artifacts. Core principle: "AI found the answers. I asked the questions."
+Two-phase knowledge deepening. Phase 1 runs automatically — generates advanced artifacts from what snorkel+source already produced. Phase 2 is interactive — surfaces what code cannot answer and guides the user through Socratic exploration.
+
+Core principle: "AI found the answers. I asked the questions."
+
+## MANDATORY — Completion checklist
+
+You MUST complete these phases IN ORDER. Do NOT skip any.
+
+1. **Locate the reef** (Step 1)
+2. **Load context** (Step 2)
+3. **Phase 1: Automated Deepening** (Step 3) — all 8 sub-steps, no user input
+4. **Phase 1 Briefing** (Step 4) — present findings, ask user where to start Phase 2
+5. **Phase 2: Interactive Q&A** (Step 5) — Socratic exploration, one question at a time
+6. **Session management** (Step 6) — track progress, summarize at pauses
+
+---
 
 ## Setup
 
@@ -12,7 +27,7 @@ Read these references before doing anything else:
 
 - `/Users/jessi/Projects/seaof-ai/reef/references/artifact-contract.md`
 - `/Users/jessi/Projects/seaof-ai/reef/references/methodology.md`
-- `/Users/jessi/Projects/seaof-ai/reef/references/understanding-template.md` (33 baseline questions)
+- `/Users/jessi/Projects/seaof-ai/reef/references/understanding-template.md` — focus on Scuba (C1-C10) questions
 
 ## Voice
 
@@ -22,99 +37,284 @@ Honest about limits: "I can see the code does X, but I can not tell from the cod
 
 The user is the domain expert. Claude reads code; the user knows context.
 
-## Procedure
+---
 
-### 1. Locate the reef
+## Step 1 — Locate the reef
 
 Walk up from cwd looking for a `.reef/` directory. That parent is the reef root. If not found, stop and tell the user to run `/reef:init` first.
 
-### 2. Load context
+---
 
-- Read `.reef/project.json` to understand scope and source roots.
+## Step 2 — Load context
+
+- Read `.reef/project.json` to understand scope, source roots, and service groupings.
 - Read `.reef/questions.json` to see the question bank and what has been answered.
 - Scan `artifacts/` for existing artifacts — read their frontmatter to understand current coverage.
-- **Read `sources/apis/` and `sources/schemas/`** for extracted API specs and ERDs. These are the full specs from `/reef:source`, organized by service. API specs are always `openapi.json` (valid OpenAPI 3.x). ERDs are `schema.md` with Mermaid diagrams and field tables. Use them to ask deeper, more targeted questions — they contain the complete endpoint maps and data models that structural scanning alone cannot capture. If these directories are empty, note this and suggest the user run `/reef:source` first for better results.
+- Read `sources/apis/` and `sources/schemas/` for extracted API specs and ERDs. These contain the complete endpoint maps and data models. If these directories are empty, note this and warn that Phase 1 will produce thinner results — suggest running `/reef:source` first.
+- Read all GLOSSARY- artifacts — these are needed for entity comparison and glossary cross-checking.
 
-### 3. Spec-driven artifact upgrade (automated)
+---
 
-Before any Socratic questioning, upgrade snorkel-draft artifacts using the full specs from source extraction. This step is fully automated — no user input needed.
+## Step 3 — Phase 1: Automated Deepening
 
-**When to run:** Only if `sources/apis/` or `sources/schemas/` contain extracted specs. If both directories are empty, skip to Step 4.
+No user input. Complete all 8 sub-steps before presenting the briefing. Report progress as you go ("Analyzing API patterns for payments-gateway...", "Scanning for status fields in schema artifacts...").
 
-**For each API- artifact with `status: draft` and `freshness_note: "snorkel-depth scan"`:**
+All Phase 1 artifacts are `status: "draft"`. Phase 2 can promote to `"active"` with user confirmation.
 
-1. Find the matching spec: `sources/apis/{service}/{sub}/openapi.json`.
-2. Read the full OpenAPI spec — extract all endpoints, methods, request/response schemas, auth requirements, tags.
-3. Rewrite the artifact body with complete endpoint documentation:
-   - Group endpoints by tag/resource
-   - Include request parameters and response schemas
-   - Note auth requirements per endpoint
-   - List error codes where specified
-4. Update frontmatter:
-   - `freshness_note: "upgraded from extracted OpenAPI spec"`
-   - `known_unknowns`: remove items answered by the spec, keep others
-   - Add `openapi.json` to `sources` list
-5. Follow the full artifact contract (field order, validation, determinism rules).
-6. Run post-write commands (snapshot, rebuild-index, rebuild-map, log "Upgraded {artifact-id}").
+### 3.1 — API pattern analysis
 
-**For each SCH- artifact with `status: draft` and `freshness_note: "snorkel-depth scan"`:**
+For each service with an extracted OpenAPI spec in `sources/apis/{service}/{sub}/openapi.json`:
 
-1. Find the matching schema: `sources/schemas/{service}/{sub}/schema.md`.
-2. Read the full ERD — extract all tables/collections, fields, types, relationships.
-3. Rewrite the artifact body with complete data model documentation:
-   - All tables with full field lists
-   - Primary keys, foreign keys, indexes
-   - Relationship cardinalities
-   - Mermaid ERD diagram
-4. Update frontmatter same as API artifacts.
-5. Run post-write commands.
+1. Read the full spec.
+2. Analyze and document:
+   - **Surface profile**: path count, operation count, method split (GET/POST/PUT/PATCH/DELETE)
+   - **Auth posture**: count operations with vs without security requirements. "All N operations auth-gated" or "M of N operations have no auth requirement"
+   - **Non-CRUD action patterns**: scan for `:verb` suffix on path segments (e.g., `:finalize`, `:assign`, `:clone`). List them. Note: "these are workflow transitions, not plain resource mutations"
+   - **Batch operations**: scan for `batch` or `Batch` in paths or operationIds
+   - **Pagination convention**: scan for `page`/`page_size`/`limit`/`offset`/`cursor` on GET list endpoints
+   - **Error code patterns**: scan response schemas for common error codes. Note which are most prevalent
+   - **Contract limits**: what OpenAPI does NOT encode — business invariants, side effects, cross-entity invariants, idempotency semantics
+3. **Output:** Write an API- artifact per service/sub as a "delta layer on top of OpenAPI" — not a duplication of endpoint tables, but agent-relevant interpretation. Include a "How Agents Should Use This" section. Set `freshness_note: "scuba-depth API pattern analysis"`.
 
-**After all upgrades:** Report what was upgraded:
+### 3.2 — Comprehensive schema documentation
+
+For each service with an extracted ERD in `sources/schemas/{service}/{sub}/schema.md`:
+
+1. Read the full schema.
+2. Document:
+   - **Tech stack**: explicitly state the database (PostgreSQL, MongoDB, Redis) and ORM/ODM (SQLAlchemy, Beanie, GORM, Prisma)
+   - **For RDB schemas**: full field tables with columns for Field, Type, Nullable, PK/FK, Index, Notes. Mermaid ERD diagram showing tables and FK relationships.
+   - **For document stores (MongoDB)**: document nesting structure, embedded vs referenced fields, index strategies. Mermaid diagram showing document relationships.
+   - **Entity descriptions**: what each table/collection represents, not just its fields
+   - **Relationship cardinalities**: one-to-one, one-to-many, many-to-many with join table names
+3. **Output:** Write or update SCH- artifacts per service/sub. Set `freshness_note: "scuba-depth schema documentation"`.
+
+### 3.3 — Core entity lifecycle identification
+
+Scan all SCH- artifacts for entities with status/state fields:
+
+1. Look for fields with names containing `status`, `state`, `phase`, `stage` and types that are Enum or constrained string values.
+2. For each entity with a status field:
+   - Extract the possible states from Enum definitions or code constants
+   - Search the source code for places where the status field is set or updated — map "from state → to state" transitions
+   - Identify side effects on transitions (events published, downstream updates, notifications) if visible in code
+   - Note which transitions appear irreversible
+3. **Output:** Draft PROC- artifact per core entity lifecycle. Include:
+   - Status enum values
+   - Transition map (what code reading reveals)
+   - Generous `known_unknowns`: "Transition triggers not fully traced from code", "Business rules governing transitions need user confirmation", "Side effects on transition not fully documented"
+   - Set `freshness_note: "scuba-depth lifecycle draft from code scan"`
+
+If no status/state fields are found, skip and note in the briefing.
+
+### 3.4 — Auth boundary artifacts
+
+For each service, scan for authentication and authorization patterns:
+
+1. Search the source code for:
+   - JWT validation middleware or decorators
+   - Keycloak/Auth0/OAuth2 client configuration
+   - RBAC decorators, permission checks, policy engines
+   - Service account configuration (client credentials)
+   - API key validation
+   - Multiple auth paths coexisting (legacy vs new)
+2. For each service where auth patterns are found, document:
+   - **AuthN mechanism**: what it is and where in code (JWT, Keycloak, service accounts)
+   - **AuthZ enforcement**: how it works (RBAC middleware, decorators, policy engine)
+   - **Token flow**: how tokens move between frontend and backend (if detectable)
+   - **Service-to-service auth**: how backend services authenticate to each other
+   - If multiple auth paths coexist, document both with path selection logic
+3. **Output:** PROC- artifact per service for auth boundaries. Set `freshness_note: "scuba-depth auth boundary scan"`.
+
+If no auth patterns are found in a service, skip and note in the briefing.
+
+### 3.5 — FE/BE contract identification
+
+Scan frontend source repos (if present in project.json sources):
+
+1. Look for:
+   - Generated API clients: `openapi-generator`, `swagger-codegen`, `orval`, `openapi-typescript` in dependency files or generated file headers
+   - Shared type definitions: TypeScript interfaces/types that mirror backend schemas
+   - Auth flow code: silent SSO setup, token refresh logic, auth interceptors in HTTP clients
+   - API base URL configuration: environment variables pointing to backend services
+2. **Output:** CON- artifact documenting the FE/BE contract per service pair where both frontend and backend repos exist. If no frontend repos exist in the reef, skip entirely and note in the briefing.
+
+### 3.6 — Error handling patterns per service
+
+For each service's source code:
+
+1. Search for:
+   - Global exception handlers or error middleware
+   - Retry decorators/wrappers (retry logic, exponential backoff)
+   - Timeout configurations (HTTP client timeouts, database connection timeouts, query timeouts)
+   - Circuit breaker patterns or libraries
+   - Dead letter queues or error queues
+2. **Output:** If meaningful patterns are found, write a PROC- or RISK- artifact per service documenting the error handling approach. If patterns are absent (no retry, no circuit breaker, no timeout configuration), that itself is a finding — note as a RISK- artifact or add to an existing service's `known_unknowns`.
+
+### 3.7 — Dependency heat map
+
+Quantify coupling between services:
+
+1. For each source repo, search for:
+   - HTTP client calls to other services (URL construction, imported client modules, environment variables referencing other service URLs)
+   - Generated API clients from another service's spec
+   - Shared schema imports or common model files
+2. Count call sites per service pair (source → target).
+3. Rank service pairs by total coupling weight.
+4. **Output:** A CON- artifact documenting the dependency heat map with a table:
+
+```markdown
+| Source | Target | Call Sites | Shared Schemas | Generated Clients | Coupling |
+|--------|--------|------------|----------------|-------------------|----------|
+| RDP    | CDM    | 47         | cc_schema      | yes               | heavy    |
+| CTL    | CDM    | 4          | —              | yes               | light    |
+```
+
+The heaviest pairs become Phase 2 deep-dive candidates.
+
+For single-service reefs, skip this step.
+
+### 3.8 — Cross-service entity comparison
+
+Check GLOSSARY- artifacts for terms flagged as ambiguous or used in multiple services:
+
+1. For each term that appears in SCH- artifacts from different services (e.g., "Case" in CDM and CTL, "Project" in DAIP and CTL, "Dataset" in CDM and CTL):
+   - Pull the field lists from both SCH- artifacts
+   - Generate a side-by-side comparison table
+   - Flag semantic mismatches: same-name fields with different types, different storage (RDB vs document store), different lifecycle semantics
+2. **Output:** CON- artifact per entity comparison documenting:
+   - What the term means in each service
+   - Field-level comparison table
+   - High-risk ambiguities (where conflation could cause bugs or misunderstanding)
+   - Canonical writing rules: "Always prefix with service name when referring to {entity}"
+
+For single-service reefs, skip this step.
+
+---
+
+## Step 4 — Phase 1 Briefing
+
+After all 8 sub-steps, present a summary:
 
 ```
-Upgraded N artifacts from extracted specs:
-- api-payments-gateway: 47 endpoints (was 12 in draft)
-- sch-payments-gateway: 23 tables (was 8 in draft)
+Phase 1 complete.
+
+Artifacts created:
+- API-{SERVICE}-CONTRACT: {N} endpoints analyzed, {key findings}
+- SCH-{SERVICE}-{SUB}: {N} entities documented
+- PROC-{ENTITY}-LIFECYCLE: {states found}
+- PROC-{SERVICE}-AUTH-BOUNDARY: {mechanism}
+- CON-{SERVICE-A}-{SERVICE-B}-DEPENDENCY: {weight}
 - ...
 
-Ready for Socratic deepening. Where would you like to start?
+Patterns found:
+- {Service} has N action-style endpoints (workflow transitions, not plain CRUD)
+- {Entity} has a status field with M states but only K transitions traceable in code
+- {Service-A} and {Service-B} share N entity names with different definitions
+- {Service-A} → {Service-B} has the heaviest coupling (N call sites)
+- ...
+
+Could not resolve from code alone:
+- What triggers the {state} → {state} transition for {entity}?
+- Is the naming overlap between {service-A}.{entity} and {service-B}.{entity} intentional?
+- What is the production behavior for {timeout/retry} pattern?
+- ...
 ```
 
-Then proceed to Step 4 (entry point determination) for the interactive session.
+Then:
 
-### 4. Determine entry point
+1. **Glossary cross-check** all new artifacts against GLOSSARY- artifacts (same procedure as snorkel Step 6).
+2. **Bidirectional linking pass** to ensure all new artifacts are connected in the graph (same procedure as snorkel Step 7).
+3. **Add unresolved items** to `.reef/questions.json` with `"phase": "scuba"` and `"status": "unanswered"`.
+4. **Run post-write commands** for all artifacts created:
+   ```bash
+   python3 /Users/jessi/Projects/seaof-ai/reef/scripts/reef.py rebuild-index --reef <reef-root>
+   python3 /Users/jessi/Projects/seaof-ai/reef/scripts/reef.py rebuild-map --reef <reef-root>
+   python3 /Users/jessi/Projects/seaof-ai/reef/scripts/reef.py log "Scuba Phase 1: generated N artifacts" --reef <reef-root>
+   ```
 
-One of three modes based on what the user says:
+Then ask:
 
-**a. User names a topic** — e.g. "Let's explore the order processing lifecycle":
+> "Ready for Phase 2? Here are the exploration-worthy patterns I found. Where would you like to start — or would you rather explore something else?"
+
+Present the unresolved items as a prioritized list. The heaviest dependencies, the most ambiguous entities, and the most incomplete lifecycles should rank highest.
+
+---
+
+## Step 5 — Phase 2: Interactive Q&A
+
+The Socratic half. The user directs where to go. One question at a time.
+
+### 5.1 — Entry point determination
+
+One of four modes based on what the user says:
+
+**a. Phase 1 follow-up** (default) — the user picks from the unresolved questions list:
+
+1. Take the selected question.
+2. Read relevant source code to prepare context.
+3. Begin the question-by-question flow.
+
+**b. User names a topic** — e.g., "Let's explore the order processing lifecycle":
 
 1. Read relevant source code for that topic.
 2. Generate targeted questions that code reading alone cannot answer.
 3. Begin the question-by-question flow.
 
-**b. Deepen a draft** — e.g. "Deepen SYS-INGEST":
+**c. Deepen a draft** — e.g., "Deepen SYS-INGEST":
 
 1. Read the existing artifact file.
 2. Review its `known_unknowns` for gaps.
 3. Generate questions specifically to fill those gaps.
 4. Begin the question-by-question flow.
 
-**c. Generate from template** — user has no specific direction:
+**d. Generate from template** — user has no specific direction:
 
-1. Adapt the 33 baseline questions from `understanding-template.md` to what the structural scan reveals about this codebase.
+1. Adapt the C1-C10 questions from `understanding-template.md` to what the structural scan and Phase 1 reveal about this codebase.
 2. Skip questions already answered by existing artifacts.
 3. Present the adapted question list and let the user choose where to start.
 
-### 5. Guided priorities
+### 5.2 — Question patterns
 
-Follow these priorities loosely, not rigidly:
+Draw from these patterns, mapped to the understanding template C1-C10. Present one at a time, Socratic style — not as a dumped list.
 
-- SYS- boundaries first, then fill in with SCH-, API-, PROC-, and others.
-- Any artifact type at any time based on the conversation flow.
-- Warn (do not block) if a PROC- is proposed before its parent SYS- exists.
-- Propose cross-system CON- artifacts whenever system boundaries emerge.
+**Entity lifecycle confirmation (C1):**
+"I found {entity} has states {A, B, C} but I can only trace the A→B transition in code. What triggers B→C? Is it automatic, manual, or event-driven?"
 
-### 6. Question-by-question flow
+**Critical workflow tracing (C2):**
+"What are the most critical workflows in this service? I can trace the code path — you tell me what matters."
+
+**Heavy dependency deep-dives (C3):**
+"{Service-A} → {Service-B} has {N} endpoint calls across {M} flows. Want to trace the full integration contract — which flows call which endpoints, the auth model, the write-order semantics?"
+
+**Operational reality (C4):**
+"The code shows a {N}s timeout. Does that hold in production? What happens when {service} is slow or down?"
+
+**Decisions and constraints (C5):**
+"I see {pattern} in the code. Was this a deliberate architectural choice? What drove it?"
+
+**Entity comparison confirmation (C6):**
+"I found '{term}' means different things in {service-A} and {service-B}. Is this intentional? Do they ever need to align?"
+
+**RBAC exploration (C7):**
+"{Service} has {N} RBAC primitives. Want to document the full permission model — who can do what, where it's enforced, and what the edge cases are?"
+
+**Concept taxonomy (C8):**
+"{Service} uses '{concept}' {N} times across {M} directories. Is there a formal taxonomy? Want to document the different kinds?"
+
+**Business logic surfacing (C9):**
+"I found terms like '{term1}', '{term2}' that seem to carry business meaning beyond their technical implementation. Can you confirm what these mean to the business?"
+
+**Version boundary exploration (C10):**
+"{Service} has {versions} service layers. What's the migration story? Which versions are active, which are deprecated?"
+
+**Data reconciliation (C4 extension):**
+"If {service-A} uploads to {service-B} and it fails halfway, what happens? Is there reconciliation, retry, or manual intervention?"
+
+**Tribal knowledge (open-ended):**
+"What trips up every new engineer working in this area? What's the thing that isn't in the code?"
+
+### 5.3 — Question-by-question flow
 
 For each question or topic:
 
@@ -139,7 +339,7 @@ Proactively suggest questions that code cannot answer:
 
 Prioritize unanswered questions from `.reef/questions.json`.
 
-### 7. Artifact creation
+### 5.4 — Artifact creation
 
 When creating or updating an artifact, follow the full artifact contract.
 
@@ -179,9 +379,11 @@ notes:
 - Blocking: YAML parseable, all required fields present, `id` matches filename, valid enums, non-empty `freshness_note`, Key Facts present (except Glossary).
 - Warning: `relates_to` targets resolve, `sources` resolve, required body sections present, wikilinks match frontmatter.
 
-Status can be "draft" or "active" depending on confidence from the conversation.
+**Glossary cross-check:** Before writing, compare domain terms against GLOSSARY- artifacts. Fix drift or ambiguity.
 
-### 8. Post-write commands
+Status can be "draft" (Phase 1 or uncertain) or "active" (user-confirmed in Phase 2).
+
+### 5.5 — Post-write commands
 
 Run these in order after each artifact file is written and accepted:
 
@@ -194,17 +396,44 @@ python3 /Users/jessi/Projects/seaof-ai/reef/scripts/reef.py log "Created <artifa
 
 Use "Updated" instead of "Created" in the log message when updating an existing artifact.
 
-### 9. Session management
+---
+
+## Step 6 — Session management
 
 - Track which questions have been covered in this session.
 - At natural pauses, summarize progress: artifacts created or updated, questions answered, remaining gaps.
 - The user can end the session at any time. Do not push to continue.
+- When the user ends the session, update `.reef/questions.json` to reflect what was answered.
+
+---
 
 ## Key Rules
 
 - Never invent facts. If uncertain, add to `known_unknowns`.
 - Honest gaps beat confident lies.
 - The user is the domain expert. Claude reads code; the user knows context.
+- **Phase 1 must complete fully before asking the user any questions.**
+- **Phase 1 artifacts are all `status: draft`** unless analysis is highly confident.
+- **Phase 2 can promote artifacts to `status: active`** based on user confirmation.
 - Do not ask all questions at once — work through them one at a time.
 - Prioritize unanswered questions from the question bank.
-- After every artifact written, ask what was gotten wrong and what is missing.
+- After every artifact written in Phase 2, ask what was gotten wrong and what is missing.
+- Each answered Phase 2 question can produce PROC-, DEC-, RISK-, CON-, or GLOSSARY- artifacts.
+
+---
+
+## If Called Without Snorkel
+
+If no snorkel artifacts exist (empty `artifacts/` directory), Phase 1 will have very little to work with. Warn the user and suggest running `/reef:snorkel` first. Scuba builds on snorkel's foundation — it deepens, not creates from scratch.
+
+If snorkel artifacts exist but `sources/apis/` and `sources/schemas/` are empty, Phase 1 sub-steps 3.1 and 3.2 will produce thin results. Suggest running `/reef:source` for better output. Other sub-steps (lifecycle, auth, error handling, dependencies) can still run from source code directly.
+
+---
+
+## Error Handling
+
+- **No reef found**: "No reef found. Run `/reef:init` first."
+- **No sources**: "No sources configured. Run `/reef:init` to add source paths."
+- **Source path missing**: warn, skip, continue with others.
+- **reef.py fails**: report the error. Do not silently swallow.
+- **Phase 1 sub-step fails**: report the error, continue with remaining sub-steps. Include the failure in the briefing.

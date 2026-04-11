@@ -5,7 +5,7 @@ Discovery questions organized by diving level. Each level maps to a skill and bu
 | Level | Skill | Human input needed? | What it produces |
 |-------|-------|---------------------|------------------|
 | Snorkel | `/reef:snorkel` | No — code reading only | Draft artifacts with honest gaps |
-| Scuba | `/reef:scuba` | Yes — guided Q&A with user | Deepened artifacts, lifecycle maps, cross-system contracts |
+| Scuba | `/reef:scuba` | Phase 1: no. Phase 2: yes — guided Q&A | Advanced artifacts (API patterns, schema depth, lifecycles, auth boundaries, dependency maps, entity comparisons) + Socratic exploration |
 | Deep | `/reef:deep` | Yes — exhaustive tracing + user framing | Dense, line-cited artifacts for critical areas |
 
 Questions are ordered intentionally — each builds context for the next.
@@ -162,6 +162,74 @@ Requires service groupings from init.
 
 **Artifact output:** DEC- artifact per significant decision.
 
+### C6. Cross-service entity comparison
+
+For entities that share names across services (identified by glossary disambiguation flags):
+
+- What does `{entity}` mean in service A vs service B?
+- Are the field definitions compatible? (same types, same semantics)
+- Is there a canonical definition, or do both services own their own meaning?
+- Where do these definitions need to align? (API boundaries, shared databases, event payloads)
+- What happens when they drift apart?
+
+Phase 1 auto-detects these from glossary disambiguation entries and generates draft comparison tables. Phase 2 confirms with the user.
+
+**Artifact output:** CON- artifact per entity comparison.
+
+### C7. Authorization model depth
+
+For services with RBAC or complex authorization (identified by S7 findings):
+
+- What are the permission primitives? (resource types, actions, roles, permissions)
+- How are roles composed from permissions?
+- Where is authorization enforced? (API layer, service layer, database layer)
+- What is the token lifecycle? (issuance, refresh, revocation)
+- Are there multiple auth paths coexisting? (legacy vs new, local vs external)
+
+Phase 1 auto-detects auth middleware, RBAC decorators, and token validation from code. Phase 2 explores the "why" — design choices, migration plans, edge cases.
+
+**Artifact output:** PROC- artifact deepening the auth boundary, or DEC- artifact for auth design choices.
+
+### C8. Repeated concept taxonomy
+
+For terms or concepts that appear frequently across a service's codebase:
+
+- What are the different kinds of `{concept}`? (e.g., types of flows in a pipeline service)
+- Is there a formal taxonomy, or is the naming ad hoc?
+- What are the lifecycle stages of a `{concept}`?
+- How do instances relate to each other? (composition, dependency, ordering)
+
+Phase 1 identifies high-frequency terms by scanning directory structures and code patterns. Phase 2 asks the user to confirm and refine the taxonomy.
+
+**Artifact output:** PROC- artifact documenting the taxonomy, or GLOSSARY- extension.
+
+### C9. Business logic and domain terms
+
+For terms that appear to carry business semantics beyond their technical implementation:
+
+- What does `{term}` mean to the business? (not just what the code does)
+- Where did this term originate? (domain expert, regulatory requirement, legacy system)
+- Is the code implementation faithful to the business meaning?
+- Are there business rules that the code does not enforce? (convention, manual process, future work)
+
+Phase 1 surfaces candidate terms by finding names that don't match standard technical vocabulary. Phase 2 confirms with the user — only they know what's business-meaningful vs incidental naming.
+
+**Artifact output:** GLOSSARY- extension or PROC- for business rules.
+
+### C10. Version boundaries and migration
+
+For services with multiple API versions or service layers detected:
+
+- What prompted each version boundary? (breaking change, new feature, team split)
+- What is the migration plan? (deprecation timeline, client migration)
+- Are old versions deprecated or still actively used?
+- What clients are on which version?
+- What would break if an old version were removed?
+
+Phase 1 detects version boundaries from directory structure (v1/, v2/, v3/) and route definitions. Phase 2 asks the user for the migration story.
+
+**Artifact output:** DEC- artifact per version boundary decision.
+
 ---
 
 ## Deep — Why is it this way?
@@ -199,6 +267,11 @@ These rules modify the question set based on what the structural scan discovers:
 - **Single-source reef:** Skip C3 (cross-service contracts). Within-service questions in S1 simplify to just external dependencies.
 - **No event/async system detected:** Simplify S6 — skip async execution paths.
 - **Simple or single-purpose service:** Compress S1-S4. Fewer questions needed when there are only a few files.
+- **No status/state fields found on entities:** Skip C1 lifecycle detection in scuba Phase 1. Note in briefing.
+- **Single-service reef:** Skip C6 (entity comparison) and dependency heat map. Simplify to within-service patterns only.
+- **No frontend repos in sources:** Skip FE/BE contract detection in scuba Phase 1.
+- **No RBAC primitives found:** Skip C7 depth exploration. Note auth as a gap in briefing.
+- **No version boundaries detected:** Skip C10. The service has a single API version.
 - **Always:** Skip questions already answered by existing artifacts. Do not re-ask what is already known.
 
 ---

@@ -192,7 +192,50 @@ python3 /Users/jessi/Projects/seaof-ai/reef/scripts/reef.py snapshot <artifact-i
 
 ---
 
-## Step 5 — Glossary cross-check
+## Step 5 — Spec-driven artifact upgrade
+
+If `/reef:source` ran in parallel with snorkel, extracted API specs and ERDs are now available in `sources/apis/` and `sources/schemas/`. Use them to upgrade draft artifacts from surface-level summaries to spec-accurate documentation.
+
+**When to run:** Only if `sources/apis/` or `sources/schemas/` contain extracted specs. If both directories are empty, skip to Step 6 — source extraction may not have been configured or may still be running.
+
+**For each API- artifact with `freshness_note` containing "snorkel":**
+
+1. Find the matching spec: `sources/apis/{service}/{sub}/openapi.json`.
+2. Read the full OpenAPI spec — extract all endpoints, methods, request/response schemas, auth requirements, tags.
+3. Rewrite the artifact body with complete endpoint documentation:
+   - Group endpoints by tag/resource
+   - Include request parameters and response schemas
+   - Note auth requirements per endpoint
+   - List error codes where specified
+4. Update frontmatter:
+   - `freshness_note: "upgraded from extracted OpenAPI spec"`
+   - `known_unknowns`: remove items answered by the spec, keep others
+   - Add `openapi.json` to `sources` list
+5. Follow the full artifact contract (field order, validation, determinism rules).
+6. Run snapshot after writing.
+
+**For each SCH- artifact with `freshness_note` containing "snorkel":**
+
+1. Find the matching schema: `sources/schemas/{service}/{sub}/schema.md`.
+2. Read the full ERD — extract all tables/collections, fields, types, relationships.
+3. Rewrite the artifact body with complete data model documentation:
+   - All tables with full field lists (types, nullability, PK/FK, indexes)
+   - Relationship cardinalities
+   - Mermaid ERD diagram
+4. Update frontmatter same as API artifacts.
+5. Run snapshot after writing.
+
+**After all upgrades:** Report what was upgraded:
+
+```
+Upgraded N artifacts from extracted specs:
+- api-{service}: {N} endpoints (was {M} in draft)
+- sch-{service}: {N} tables (was {M} in draft)
+```
+
+---
+
+## Step 6 — Glossary cross-check
 
 After all artifacts are written (including the GLOSSARY- artifact), do a glossary validation pass:
 
@@ -205,7 +248,7 @@ This prevents drift between artifacts and the glossary from the very first gener
 
 ---
 
-## Step 6 — Bidirectional linking pass
+## Step 7 — Bidirectional linking pass
 
 After all artifacts are written, do a linking pass to ensure the Obsidian graph is fully connected:
 
@@ -223,7 +266,7 @@ This pass is critical for Obsidian graph view — unlinked nodes appear as disco
 
 ---
 
-## Step 7 — Update question bank
+## Step 8 — Update question bank
 
 After generating artifacts, update `.reef/questions.json`:
 
@@ -235,7 +278,7 @@ This gives `/reef:test` and `/reef:scuba` a clear picture of what's covered and 
 
 ---
 
-## Step 8 — Wrap up
+## Step 9 — Wrap up
 
 Run:
 ```bash
@@ -279,12 +322,10 @@ Summarize:
 
 Then suggest next steps:
 
-"The snorkel pass answered M of T discovery questions. The structural scan produced draft artifacts with honest gaps.
-
-If `/reef:source` ran in parallel, full API specs and ERDs are now in `sources/raw/` — ready for deeper exploration.
+"The snorkel pass answered M of T discovery questions. Draft artifacts are in place with honest gaps.
 
 Next steps:
-- `/reef:scuba` — work through the unanswered questions together. You bring the domain knowledge, I read the code.
+- `/reef:scuba` — automated deepening + Socratic exploration. Generates advanced artifacts (lifecycles, auth boundaries, dependency maps) then works through unanswered questions with you.
 - `/reef:deep` — exhaustive line-by-line tracing of a specific area.
 - `/reef:test` — see how well the reef answers your questions right now."
 
@@ -308,7 +349,7 @@ Only mention this if the gaps are genuinely the kind that docs would fill. Do no
 
 ## Key Rules
 
-- **Follow the frontmatter schema and body sections in Step 5 exactly.**
+- **Follow the frontmatter schema and body sections in Step 4 exactly.**
 - **Questions steer discovery.** Don't just scan blindly — use the question bank to decide what to investigate.
 - **Artifact IDs**: uppercase prefix + uppercase domain/name, hyphen-separated.
 - **Filenames**: lowercase ID + `.md`.
