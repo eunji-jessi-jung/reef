@@ -33,7 +33,7 @@ Walk up from cwd looking for a `.reef/` directory. That parent is the reef root.
 - Read `.reef/project.json` to understand scope and source roots.
 - Read `.reef/questions.json` to see the question bank and what has been answered.
 - Scan `artifacts/` for existing artifacts — read their frontmatter to understand current coverage.
-- **Read `sources/raw/`** for extracted API specs and ERDs. These are the full runtime specs from `/reef:source`. Use them to ask deeper, more targeted questions — they contain the complete endpoint maps and data models that structural scanning alone cannot capture. If `sources/raw/` is empty, note this and suggest the user run `/reef:source` first for better results.
+- **Read `sources/apis/` and `sources/schemas/`** for extracted API specs and ERDs. These are the full specs from `/reef:source`, organized by service. API specs are always `openapi.json` (valid OpenAPI 3.x). ERDs are `schema.md` with Mermaid diagrams and field tables. Use them to ask deeper, more targeted questions — they contain the complete endpoint maps and data models that structural scanning alone cannot capture. If these directories are empty, note this and suggest the user run `/reef:source` first for better results.
 
 ### 3. Determine entry point
 
