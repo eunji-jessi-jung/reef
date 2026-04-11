@@ -15,8 +15,9 @@ You MUST complete these interactions with the user IN ORDER. Do NOT skip any. Do
 5. **Scan for repos** — Run `find <directory> -name .git -type d 2>/dev/null | sed 's|/.git||' | sort` — this is the ONLY correct way to find repos. Do NOT use ls, glob, or manual directory listing. Present results and ask user to confirm.
 6. **Scaffold and index** (Steps 5-6) — automated, no user input.
 7. **Service grouping** (Step 7) — present best guess as table, ask user to correct. STOP and wait.
+8. **Discovery plan** (Step 8) — show what snorkel+source will do, estimated time/tokens. STOP and wait for confirmation.
 
-Only after ALL interactions are complete, auto-trigger snorkel (Step 8).
+Only after ALL interactions are complete, launch snorkel+source (Step 9).
 
 ---
 
@@ -203,16 +204,48 @@ The user responds in natural language. Parse their corrections, apply them, and 
 
 ---
 
-## Step 8 — Auto-trigger snorkel and source
-
-Report: "Reef is set up. Starting discovery and source extraction in parallel — this will take about 10-15 minutes. You can grab a coffee while it runs."
+## Step 8 — Present discovery plan and confirm
 
 Run:
 ```bash
 python3 /Users/jessi/Projects/seaof-ai/reef/scripts/reef.py log "Reef initialized: <name> covering <sources>." --reef <resolved-reef-path>
 ```
 
-Now launch **two skills in parallel**:
+Now present a discovery plan to the user. Tailor the details based on what was found during indexing — number of sources, detected frameworks, file counts:
+
+```
+Reef is set up. Here is what happens next:
+
+Two things will run in parallel:
+
+  Snorkel (structural discovery)
+  - Scan directory trees, READMEs, and key source files
+  - Generate discovery questions from what it finds
+  - Produce 3-6 draft artifacts per source (SYS-, SCH-, API-, CON-)
+  - Build the question bank for later deepening
+
+  Source (API + data model extraction)
+  - Detect tech stacks (frameworks, ORMs) in each repo
+  - Extract full API specs (OpenAPI/Swagger) where possible
+  - Extract entity-relationship diagrams from model files
+  - Cache recipes for fast re-extraction on future runs
+
+Estimated time: ~10-15 minutes
+Estimated tokens: ~50-80k depending on codebase size
+
+Both run fully automated — no input needed from you.
+Ready to start?
+```
+
+**Wait for the user to confirm before proceeding.** The user might want to adjust scope, take a break, or run it later.
+
+---
+
+## Step 9 — Launch snorkel and source
+
+After the user confirms, report: "Starting discovery and source extraction..."
+
+Launch **two skills in parallel**:
 
 1. **Snorkel** — Read `/Users/jessi/Projects/seaof-ai/reef/skills/snorkel/SKILL.md` and follow its instructions. Produces structural draft artifacts.
 2. **Source** — Read `/Users/jessi/Projects/seaof-ai/reef/skills/source/SKILL.md` and follow its instructions. Extracts full API specs and ERDs.
@@ -225,7 +258,7 @@ Use the Agent tool to run these concurrently. Both are fully automated — no us
 
 - Curious Researcher voice. Present-participle narration: "Scaffolding the reef...", "Indexing source files..."
 - No emojis. No exclamation marks.
-- Fast and automated. The user answered three questions (name, description, location+sources), confirmed sources, and corrected service groupings. After that, do not ask for input — snorkel runs unattended.
+- Fast and automated. The user answered questions (name, description, location+sources), confirmed sources, corrected service groupings, and approved the discovery plan. After that, do not ask for input — snorkel and source run unattended.
 
 ---
 
