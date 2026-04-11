@@ -10,14 +10,17 @@ Core principle: "AI found the answers. I asked the questions."
 
 ## MANDATORY — Completion checklist
 
-You MUST complete these phases IN ORDER. Do NOT skip any.
+You MUST complete these phases IN ORDER. Do NOT skip any. Do NOT jump ahead.
 
 1. **Locate the reef** (Step 1)
 2. **Load context** (Step 2)
-3. **Phase 1: Automated Deepening** (Step 3) — all 9 sub-steps, no user input
-4. **Phase 1 Briefing** (Step 4) — present findings, ask user where to start Phase 2
-5. **Phase 2: Interactive Q&A** (Step 5) — Socratic exploration, one question at a time
-6. **Session management** (Step 6) — track progress, summarize at pauses
+3. **Build the artifact generation manifest** (Step 2.5) — explicit list of every artifact to produce
+4. **Phase 1: Automated Deepening** (Step 3) — work through the manifest, NO user input needed
+5. **Phase 1 Briefing** (Step 4) — present manifest completion status, ask user where to start Phase 2
+6. **Phase 2: Interactive Q&A** (Step 5) — Socratic exploration, one question at a time
+7. **Session management** (Step 6) — track progress, summarize at pauses
+
+**CRITICAL: Phase 1 ALWAYS runs first.** Even if the user says "let's answer the questions" or "go through all of them" or similar — this means: run Phase 1 to auto-answer what code can reveal, THEN present findings in the briefing, THEN start Phase 2 for what code alone could not answer. The user's first interaction point is the Phase 1 briefing (Step 4), not before. Do NOT ask the user questions until Phase 1 is complete.
 
 ---
 
@@ -53,9 +56,9 @@ Walk up from cwd looking for a `.reef/` directory. That parent is the reef root.
 - Read `sources/apis/` and `sources/schemas/` for extracted API specs and ERDs. These contain the complete endpoint maps and data models. If these directories are empty, note this and warn that Phase 1 will produce thinner results — suggest running `/reef:source` first.
 - Read all GLOSSARY- artifacts — these are needed for entity comparison and glossary cross-checking.
 - **Mine snorkel artifacts for deepening signals.** Read the full body (not just frontmatter) of every existing artifact — especially Key Facts, Core Concepts, and known_unknowns sections. Extract patterns, domain-specific mechanisms, and architectural findings that deserve deeper investigation. Examples of signals:
-  - A named pattern (e.g., "WithData pattern", "outbox pattern", "TBM batching") → candidate for a PROC- artifact documenting the pattern
-  - A domain-specific mechanism (e.g., "hash-based deduplication", "materialized views", "data provenance via ingestion tracking") → candidate for a PROC- or DEC- artifact
-  - A cross-service coupling signal (e.g., "portal_api_client must be passed to service initializers") → candidate for deeper CON- artifact
+  - A named pattern (e.g., "outbox pattern", "saga orchestration", "event sourcing") → candidate for a PROC- artifact documenting the pattern
+  - A domain-specific mechanism (e.g., "hash-based deduplication", "materialized views", "optimistic locking with version counters") → candidate for a PROC- or DEC- artifact
+  - A cross-service coupling signal (e.g., "shared API client must be passed to service initializers") → candidate for deeper CON- artifact
   - A gap or uncertainty in known_unknowns that code reading could partially resolve
 
   **Categorize each signal as scuba-level or deep-level:**
@@ -66,11 +69,124 @@ Walk up from cwd looking for a `.reef/` directory. That parent is the reef root.
 
 ---
 
+## Step 2.5 — Build the artifact generation manifest
+
+**This is the most important step.** Before executing Phase 1, build an explicit, complete list of every artifact that Phase 1 must produce. Without this manifest, artifacts will be missed — Claude will generate "some" and move on.
+
+### Resume detection
+
+First, check if `.reef/scuba-manifest.json` already exists from a previous run:
+
+- If it exists and has `completed` entries: report what was already done.
+
+  ```
+  Found existing scuba manifest:
+    Completed: N artifacts
+    Remaining: M artifacts
+    Skipped:   K artifacts
+
+  Options:
+    1. Continue — pick up where you left off (generate remaining M artifacts)
+    2. Start fresh — rebuild manifest and regenerate all artifacts
+  ```
+
+- If the user chooses "continue": load the existing manifest, skip completed items, and proceed to Phase 1 with only the remaining planned artifacts.
+- If the user chooses "start fresh" or no manifest exists: build from scratch below.
+
+### Building the manifest
+
+Scan all sources and existing artifacts systematically:
+
+### API- artifacts (from extracted specs)
+
+List every `sources/apis/{service}/{sub}/openapi.json` file. Each one → one API- artifact.
+
+```
+Planned API- artifacts:
+- API-{SERVICE}-{SUB} ← sources/apis/{service}/{sub}/openapi.json
+  [exists: yes/no] [current artifact: {id} or none]
+```
+
+### SCH- artifacts (from extracted schemas)
+
+List every `sources/schemas/{service}/{sub}/schema.md` file. Each one → one SCH- artifact.
+
+```
+Planned SCH- artifacts:
+- SCH-{SERVICE}-{SUB} ← sources/schemas/{service}/{sub}/schema.md
+  [exists: yes/no] [current artifact: {id} or none]
+```
+
+### PROC- entity artifacts (from schema entities)
+
+For each SCH- artifact (existing or planned), read the schema and extract every entity (table or collection). Each **core entity** gets its own PROC- artifact covering definition, relationships, and lifecycle (if status fields exist).
+
+**Core entity filter:** An entity is "core" if it has 3+ non-FK fields, OR appears as an API resource in any endpoint, OR is referenced as a FK target by 2+ other entities. Junction tables (2 FK columns only), audit log tables, and pure config tables are documented inside their parent entity's PROC- instead.
+
+```
+Planned PROC- entity artifacts:
+- PROC-{SERVICE}-{ENTITY} ← entity {Entity} from SCH-{SERVICE}-{SUB}
+  [has status field: yes/no] [API resource: yes/no]
+```
+
+### CON- contract artifacts (from service pairs)
+
+Compute all service pairs combinatorially. For N services, there are N×(N-1)/2 pairs. Each pair → one CON- artifact (or update to existing).
+
+```
+Planned CON- artifacts:
+- CON-{SERVICE-A}-{SERVICE-B} [exists: yes/no]
+```
+
+### PROC- auth artifacts (from auth patterns)
+
+One per service where auth patterns exist (detected during Step 2 context loading or from SYS- artifacts mentioning auth).
+
+### PROC-/DEC- pattern artifacts (from snorkel signal mining)
+
+One per scuba-level signal identified in Step 2.
+
+### Summary
+
+Print the full manifest with counts:
+
+```
+Artifact generation manifest:
+  API-  artifacts: N planned (M new, K updates)
+  SCH-  artifacts: N planned (M new, K updates)
+  PROC- entities:  N planned (from X core entities across Y schemas)
+  CON-  contracts: N planned (M new, K updates)
+  PROC- auth:      N planned
+  PROC-/DEC-:      N planned (from pattern signals)
+  ──────────────
+  Total:           N artifacts
+```
+
+Save the manifest to `.reef/scuba-manifest.json` with this structure:
+
+```json
+{
+  "generated_at": "ISO timestamp",
+  "planned": [
+    { "id": "API-PAYMENTS-GATEWAY", "type": "api", "source": "sources/apis/payments/gateway/openapi.json", "status": "new" },
+    { "id": "PROC-PAYMENTS-ORDER", "type": "process", "source": "sources/schemas/payments/gateway/schema.md", "entity": "Order", "status": "new" }
+  ],
+  "completed": [],
+  "skipped": []
+}
+```
+
+**Phase 1 executes against this manifest.** After each artifact is written, move it from `planned` to `completed`. If a planned artifact turns out to be unnecessary (empty schema, no meaningful content), move it to `skipped` with a reason.
+
+---
+
 ## Step 3 — Phase 1: Automated Deepening
 
-No user input. Complete all 9 sub-steps before presenting the briefing. Report progress as you go ("Analyzing API patterns for payments-gateway...", "Scanning for status fields in schema artifacts...").
+No user input. Work through the manifest systematically — every planned artifact must be addressed (completed or explicitly skipped with reason). Report progress as you go: "Writing API-PAYMENTS-GATEWAY (1/9 API artifacts)...", "Writing PROC-PAYMENTS-ORDER (3/24 entity artifacts)...".
 
 All Phase 1 artifacts are `status: "draft"`. Phase 2 can promote to `"active"` with user confirmation.
+
+**Parallelism:** Where possible, use the Agent tool to process multiple independent artifacts concurrently. For example, launch one agent per API- artifact or one agent per service's entity batch.
 
 ### 3.1 — API pattern analysis
 
@@ -100,23 +216,29 @@ For each service with an extracted ERD in `sources/schemas/{service}/{sub}/schem
    - **Relationship cardinalities**: one-to-one, one-to-many, many-to-many with join table names
 3. **Output:** Write or update SCH- artifacts per service/sub. Set `freshness_note: "scuba-depth schema documentation"`.
 
-### 3.3 — Core entity lifecycle identification
+### 3.3 — Entity definition and lifecycle artifacts
 
-Scan all SCH- artifacts for entities with status/state fields:
+Generate a PROC- artifact for every core entity listed in the manifest. Work through the manifest's PROC- entity list systematically.
 
-1. Look for fields with names containing `status`, `state`, `phase`, `stage` and types that are Enum or constrained string values.
-2. For each entity with a status field:
-   - Extract the possible states from Enum definitions or code constants
-   - Search the source code for places where the status field is set or updated — map "from state → to state" transitions
-   - Identify side effects on transitions (events published, downstream updates, notifications) if visible in code
-   - Note which transitions appear irreversible
-3. **Output:** Draft PROC- artifact per core entity lifecycle. Include:
-   - Status enum values
-   - Transition map (what code reading reveals)
-   - Generous `known_unknowns`: "Transition triggers not fully traced from code", "Business rules governing transitions need user confirmation", "Side effects on transition not fully documented"
-   - Set `freshness_note: "scuba-depth lifecycle draft from code scan"`
+For each core entity:
 
-If no status/state fields are found, skip and note in the briefing.
+1. **Read the source code** — find the model/schema definition file in the source repo. Read it to understand fields, relationships, validators, and business logic.
+2. **Write the PROC- artifact** with these sections:
+   - **Definition**: what the entity is, what it represents in the domain, why it exists
+   - **Fields**: key fields with types and what they mean (not a raw dump — focus on fields that carry business meaning, FK relationships, computed fields, and anything non-obvious)
+   - **Relationships**: how this entity connects to others (parent, children, associations). Reference the related PROC- artifacts.
+   - **Creation**: how instances are created (API endpoint, background job, migration, external sync)
+   - **Lifecycle** (if the entity has status/state fields):
+     - Status enum values (from code constants or Enum definitions)
+     - Transition map: search source code for where status is set/updated → map "from → to" transitions
+     - Side effects on transitions (events, downstream updates, notifications) if visible in code
+     - Which transitions appear irreversible
+   - **Known unknowns**: generously flag gaps — "Business rules governing X need user confirmation", "Transition triggers not fully traced from code", etc.
+3. **Output:** Set `freshness_note: "scuba-depth entity definition from code scan"`. For entities with lifecycle: `"scuba-depth entity definition + lifecycle from code scan"`.
+
+**For junction/config tables** (entities that didn't pass the core entity filter): document them in the `## Relationships` section of their parent entity's PROC- artifact. Don't generate a separate artifact.
+
+**Parallelism:** Entity artifacts within the same service can share context (same schema, same source repo). Group by service and launch one agent per service batch.
 
 ### 3.4 — Auth boundary artifacts
 
@@ -162,26 +284,34 @@ For each service's source code:
    - Dead letter queues or error queues
 2. **Output:** If meaningful patterns are found, write a PROC- or RISK- artifact per service documenting the error handling approach. If patterns are absent (no retry, no circuit breaker, no timeout configuration), that itself is a finding — note as a RISK- artifact or add to an existing service's `known_unknowns`.
 
-### 3.7 — Dependency heat map
+### 3.7 — Service contracts (all pairs)
 
-Quantify coupling between services:
+Generate or update a CON- artifact for **every service pair** in the manifest. For N services, there are N×(N-1)/2 pairs — all must be covered.
 
-1. For each source repo, search for:
-   - HTTP client calls to other services (URL construction, imported client modules, environment variables referencing other service URLs)
-   - Generated API clients from another service's spec
+For each service pair:
+
+1. Search both services' source code for evidence of interaction:
+   - HTTP client calls to the other service (URL construction, imported client modules, environment variables referencing the other service's URLs)
+   - Generated API clients from the other service's spec
    - Shared schema imports or common model files
-2. Count call sites per service pair (source → target).
-3. Rank service pairs by total coupling weight.
-4. **Output:** A CON- artifact documenting the dependency heat map with a table:
+   - Event/message passing between the services
+   - Shared database access
+2. If interaction evidence is found:
+   - Count call sites and categorize by direction (A→B vs B→A)
+   - Document the contract: what data flows, in what format, through what transport
+   - Note auth requirements at the boundary
+   - Rate coupling: heavy / moderate / light
+3. If NO interaction evidence is found:
+   - Still create the CON- artifact documenting: "No direct integration detected. These services appear to operate independently."
+   - This is valuable — it confirms the absence of coupling, not just that we didn't look.
+4. **Output:** CON- artifact per pair. Update existing ones if they exist from snorkel.
+
+After all pairs, add a summary heat map table to the briefing:
 
 ```markdown
 | Source | Target | Call Sites | Shared Schemas | Generated Clients | Coupling |
 |--------|--------|------------|----------------|-------------------|----------|
-| RDP    | CDM    | 47         | cc_schema      | yes               | heavy    |
-| CTL    | CDM    | 4          | —              | yes               | light    |
 ```
-
-The heaviest pairs become Phase 2 deep-dive candidates.
 
 For single-service reefs, skip this step.
 
@@ -189,7 +319,7 @@ For single-service reefs, skip this step.
 
 Check GLOSSARY- artifacts for terms flagged as ambiguous or used in multiple services:
 
-1. For each term that appears in SCH- artifacts from different services (e.g., "Case" in CDM and CTL, "Project" in DAIP and CTL, "Dataset" in CDM and CTL):
+1. For each term that appears in SCH- artifacts from different services (e.g., "Order" in Payments and Fulfillment, "Product" in Catalog and Inventory, "User" in Auth and Billing):
    - Pull the field lists from both SCH- artifacts
    - Generate a side-by-side comparison table
    - Flag semantic mismatches: same-name fields with different types, different storage (RDB vs document store), different lifecycle semantics
@@ -208,9 +338,9 @@ Using the scuba-level signals collected during Step 2 (mining snorkel artifacts)
 1. For each named pattern or domain-specific mechanism found in snorkel artifacts' Key Facts or Core Concepts:
    - Read the source code referenced by the artifact to understand the pattern at a conceptual level
    - Document: what the pattern is, which entities/services use it, why it exists, what it enables, how it differs from the standard approach
-   - Example: if snorkel found "WithData pattern: core entities split into immutable identity record and versioned data records" — read the model files to understand which entities use it, what the versioning semantics are, and why this design was chosen over simple mutable records
-   - Example: if snorkel found "hash-based deduplication using patient_hash, study_hash, dicom_hash" — document what's hashed, why triple hashing exists, what happens on collision, and how it relates to data provenance
-   - Example: if snorkel found "StudyLatestFlatMV is a materialized view" — document why it exists (read-heavy list endpoints), how it differs from a regular view (pre-computed, needs refresh), and what the staleness implications are
+   - Example: if snorkel found "Soft-delete pattern: entities use is_deleted flag instead of hard delete" — read the model files to understand which entities use it, whether cascading deletes are handled, and why soft-delete was chosen over hard delete
+   - Example: if snorkel found "Hash-based deduplication using content_hash and source_hash" — document what's hashed, why multi-level hashing exists, what happens on collision, and how it relates to data integrity
+   - Example: if snorkel found "OrderSummaryMV is a materialized view" — document why it exists (read-heavy list endpoints), how it differs from a regular view (pre-computed, needs refresh), and what the staleness implications are
 
 2. **Output:** PROC- or DEC- artifact per pattern/mechanism. Set `freshness_note: "scuba-depth pattern analysis"`. Focus on the "what and why" — leave "trace every line" for `/reef:deep`.
 
@@ -222,23 +352,26 @@ Using the scuba-level signals collected during Step 2 (mining snorkel artifacts)
 
 ## Step 4 — Phase 1 Briefing
 
-After all 9 sub-steps, present a summary:
+After all sub-steps, read `.reef/scuba-manifest.json` and present a manifest-based summary:
 
 ```
 Phase 1 complete.
 
-Artifacts created:
-- API-{SERVICE}-CONTRACT: {N} endpoints analyzed, {key findings}
-- SCH-{SERVICE}-{SUB}: {N} entities documented
-- PROC-{ENTITY}-LIFECYCLE: {states found}
-- PROC-{SERVICE}-AUTH-BOUNDARY: {mechanism}
-- CON-{SERVICE-A}-{SERVICE-B}-DEPENDENCY: {weight}
-- ...
+Manifest: N/M planned artifacts completed, K skipped.
 
-Patterns found:
+  API-  artifacts:  N/M completed
+  SCH-  artifacts:  N/M completed
+  PROC- entities:   N/M completed
+  CON-  contracts:  N/M completed
+  PROC- auth:       N/M completed
+  PROC-/DEC-:       N/M completed
+
+Skipped (with reasons):
+- {ID}: {reason}
+
+Key findings:
 - {Service} has N action-style endpoints (workflow transitions, not plain CRUD)
 - {Entity} has a status field with M states but only K transitions traceable in code
-- {Service-A} and {Service-B} share N entity names with different definitions
 - {Service-A} → {Service-B} has the heaviest coupling (N call sites)
 - ...
 

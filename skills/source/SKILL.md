@@ -88,6 +88,30 @@ sources/
 2. **Read `.reef/project.json`** for source paths and **service groupings**. The `services` array maps repos to services — use this to determine output directory structure.
 3. **Read `.reef/source-recipes.json`** if it exists — cached extraction recipes from previous runs.
 
+### Resume detection
+
+After loading context, scan `sources/apis/` and `sources/schemas/` for already-extracted specs:
+
+- List all `openapi.json` files in `sources/apis/`
+- List all `schema.md` files in `sources/schemas/`
+- Compare against the services and sub-apps configured in `project.json`
+
+If extractions already exist:
+
+```
+Found existing extractions:
+  API specs: N (services: {list})
+  Schemas:   N (services: {list})
+  Missing:   {list of services/subs with no extraction}
+
+Options:
+  1. Continue — extract only what's missing
+  2. Re-extract all — overwrite existing specs (useful if source code changed)
+  3. Exit — extractions look complete
+```
+
+If continuing, skip services that already have both `openapi.json` and `schema.md`. If re-extracting, proceed as normal but overwrite existing files.
+
 ---
 
 ## Step 1 — Detect tech stacks

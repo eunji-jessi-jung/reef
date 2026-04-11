@@ -18,6 +18,30 @@ The key difference from a blind scan: snorkel reads the question bank and uses i
 4. **Read `.reef/questions.json`** — the discovery questions. These steer what you investigate and document.
 5. **Read existing artifacts** in `artifacts/` to avoid duplicates.
 
+### Resume detection
+
+After loading context, check if snorkel has already partially run by comparing existing artifacts against what `project.json` services would produce:
+
+- Count existing SYS-, SCH-, API-, CON-, GLOSSARY- artifacts
+- Compare against the number of services and source repos configured
+
+If artifacts already exist:
+
+```
+Found existing snorkel artifacts:
+  SYS-: N (expected: M based on services)
+  SCH-: N (expected: M based on schemas)
+  CON-: N (expected: M based on service pairs)
+  GLOSSARY-: N
+
+Options:
+  1. Continue — skip services that already have artifacts, generate the rest
+  2. Start fresh — regenerate all artifacts from scratch
+  3. Exit — reef looks complete, suggest /reef:scuba instead
+```
+
+If all expected artifacts exist, suggest `/reef:scuba` and exit unless the user insists.
+
 Note: The artifact contract and templates are embedded inline in Step 5 below. You do not need to read them separately.
 
 ---
@@ -91,7 +115,7 @@ For each source in project.json:
 - Separate database configurations or ORM model sets per sub-directory
 - A workspace orchestrator (Nx, Turborepo, Cargo workspace) managing multiple packages
 
-When you find this: treat each sub-application as a **distinct sub-domain**. Generate separate SCH- and API- artifacts for each (e.g., `SCH-CDM-BREAST`, `SCH-CDM-CHEST`, `API-CDM-BREAST`, `API-CDM-CHEST`), not one combined artifact for the whole repo. The SYS- artifact stays as one per service — it describes the overall system and references the per-app schema/API artifacts.
+When you find this: treat each sub-application as a **distinct sub-domain**. Generate separate SCH- and API- artifacts for each (e.g., `SCH-PAYMENTS-GATEWAY`, `SCH-PAYMENTS-LEDGER`, `API-PAYMENTS-GATEWAY`, `API-PAYMENTS-LEDGER`), not one combined artifact for the whole repo. The SYS- artifact stays as one per service — it describes the overall system and references the per-app schema/API artifacts.
 
 The "3-6 artifacts per source" target scales up for multi-app sources. A repo with 4 independent apps may warrant 8-12 artifacts.
 
@@ -117,7 +141,7 @@ Report progress as you go: "Reading service-a's model layer — found 14 SQLAlch
 Generate artifacts guided by what you learned. For each source, produce:
 
 1. **SYS-** first — always. One per service. This is the entry point artifact. Use orientation question findings to write a rich overview with real boundaries, dependencies, and tech stack details.
-2. **SCH-** for major data models — use data question findings. Name actual entities, describe relationships, note lifecycle states. **If the source contains multiple independent apps with separate data models, generate one SCH- per app** (e.g., SCH-CDM-BREAST, SCH-CDM-CHEST), not one combined schema artifact.
+2. **SCH-** for major data models — use data question findings. Name actual entities, describe relationships, note lifecycle states. **If the source contains multiple independent apps with separate data models, generate one SCH- per app** (e.g., SCH-PAYMENTS-GATEWAY, SCH-PAYMENTS-LEDGER), not one combined schema artifact.
 3. **API-** for API surfaces — use behavior question findings. Group endpoints, note auth patterns, describe key request flows. **Same rule: one API- per independent app** if the source has multiple apps with separate API surfaces.
 4. **GLOSSARY-** if domain terms emerged that need definition.
 5. **CON-** for cross-system boundaries — use cross-system question findings. Name both parties, describe what flows between them, cite the client/server code.
@@ -224,6 +248,8 @@ If `/reef:source` ran in parallel with snorkel, extracted API specs and ERDs are
    - Mermaid ERD diagram
 4. Update frontmatter same as API artifacts.
 5. Run snapshot after writing.
+
+**Parallelism:** Each artifact upgrade is independent. Use the Agent tool to upgrade all eligible SCH- and API- artifacts concurrently — launch one agent per artifact, all in a single message.
 
 **After all upgrades:** Report what was upgraded:
 

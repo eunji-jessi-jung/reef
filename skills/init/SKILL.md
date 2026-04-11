@@ -53,6 +53,7 @@ Estimated cost (one-time):
 
 - Output: draft artifacts + API specs + ERDs + question bank
 - After init: /reef:scuba to deepen, /reef:feed to add docs
+- Anytime: /reef:help for skill list, reef status, and what to do next
 ```
 
 Do not ask for confirmation. Just present this and move to Step 1.
@@ -70,12 +71,39 @@ Before proceeding past Step 0, read these reference files:
 
 ## Step 1 — Check for an existing reef
 
-Look for a `.reef/` directory in the current working directory and in any path the user provides.
+Look for a `.reef/` directory in **both** the current working directory **and** its immediate child directories (one level down). Run: `find . -maxdepth 2 -name .reef -type d 2>/dev/null`
 
-- If `.reef/` exists: read `.reef/project.json` and report what you find. Ask: "This directory already has a reef. Continue building on it, or start fresh?"
-- If reset: delete the existing reef directories and proceed.
-- If continue: suggest `/reef:snorkel` or `/reef:scuba` instead and exit.
-- If no reef exists: proceed to Step 2.
+Also check any path the user explicitly provides.
+
+- If one `.reef/` is found: read its `project.json` and check the reef's current state:
+  - Count artifacts in `artifacts/`
+  - Check if `sources/apis/` and `sources/schemas/` have extracted specs
+  - Check if `.reef/scuba-manifest.json` exists
+
+  Then present a status-aware recommendation:
+
+  ```
+  Found an existing reef at `{path}`: "{project name}"
+    Sources:    N repos configured
+    Artifacts:  N (SYS: a, SCH: b, API: c, CON: d, PROC: e, ...)
+    API specs:  N extracted
+    Schemas:    N extracted
+
+  Options:
+    1. Continue building — {recommendation based on state}
+    2. Start fresh — delete everything and re-init
+  ```
+
+  State-based recommendations:
+  - No artifacts, no specs → "Run `/reef:snorkel` and `/reef:source` to start discovery"
+  - Artifacts exist but no specs → "Run `/reef:source` to extract API specs and ERDs"
+  - Artifacts + specs but no PROC-/DEC- → "Run `/reef:scuba` to deepen"
+  - Scuba manifest exists with incomplete items → "Run `/reef:scuba` to continue Phase 1 (N/M artifacts remaining)"
+  - Everything looks complete → "Reef looks healthy. Try `/reef:health` for a status check or `/reef:update` to refresh stale artifacts"
+
+- If multiple `.reef/` directories found: list them with the same status summary for each. Ask which one to use, or offer to start fresh.
+- If start fresh: delete the existing reef directories and proceed to Step 2.
+- If no reef exists anywhere: proceed to Step 2.
 
 ---
 

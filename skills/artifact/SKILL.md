@@ -88,7 +88,7 @@ Before writing, cross-check the artifact against any existing GLOSSARY- artifact
 1. Read all GLOSSARY- artifacts in `artifacts/glossary/`.
 2. Scan the artifact's Key Facts, Overview, and Core Concepts for domain terms that appear in the glossary.
 3. If any term is used with a meaning that contradicts or drifts from the glossary definition, **fix the artifact text** to align with the glossary — or, if the artifact's usage is more accurate, update the glossary entry instead.
-4. If any glossary-defined term is used ambiguously (e.g., "Case" without specifying CDM or CTL when the glossary flags it as ambiguous), add the disambiguation.
+4. If any glossary-defined term is used ambiguously (e.g., "Order" without specifying Payments or Fulfillment when the glossary flags it as ambiguous), add the disambiguation.
 
 This step prevents subtle hallucination where artifacts drift from established definitions over successive updates. Skip this step only if no GLOSSARY- artifact exists yet.
 
