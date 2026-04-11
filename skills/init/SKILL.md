@@ -165,7 +165,7 @@ If monorepo signals are found:
        3d. my-monorepo/apps/admin-ui
    ```
 3. The user can select sub-projects individually (e.g., "3a, 3b" or "all of 3" or "3 except 3c").
-4. Each selected sub-project becomes its own source entry in project.json with its full path.
+4. Selected sub-projects are recorded as **sub-apps within the parent repo's source entry**, not as separate top-level sources. The parent repo is the source; sub-projects are sub-apps within it. This matters for service grouping (Step 7) — sub-apps from the same repo always belong to the same service.
 
 If no monorepo signals are found, treat the repo as a single source as usual.
 
@@ -232,6 +232,7 @@ Report results: files indexed per source, total count. If a source fails, warn a
 Read `CLAUDE.md` first (if present), then `README.md` for each source. Extract service/product identity. Also use the reef description from `.reef/project.json` as context.
 
 Try to group repos into services using these signals, in order:
+- **Monorepo sub-apps always stay together.** Sub-projects from the same parent repo are sub-apps of one service, never separate services. The service name comes from the parent repo. The sub-apps become artifact-level distinctions (e.g., SCH-PLATFORM-AUTHZ, SCH-PLATFORM-LINEAGE), not service-level ones.
 - **Explicit identity** from CLAUDE.md/README.md (e.g., "authentication service for the payments ecosystem")
 - **Shared name prefixes or postfixes** (e.g., `pay-gateway` + `pay-ledger` + `pay-admin`, or `order-service` + `order-worker`)
 - **Acronym expansion** — check if a repo prefix is an acronym of another repo's full name (e.g., `ofs-worker` prefix "ofs" matches "order-fulfillment-service" initials O.F.S.)
@@ -253,10 +254,13 @@ The user responds in natural language. Parse their corrections, apply them, and 
 ```json
 {
   "services": [
-    { "name": "Payments", "full_name": "Payments Platform", "description": "Payment processing, gateway integration, and ledger management", "sources": ["pay-gateway", "pay-ledger", "pay-admin", "checkout-frontend"] }
+    { "name": "Payments", "full_name": "Payments Platform", "description": "Payment processing, gateway integration, and ledger management", "sources": ["pay-gateway", "pay-ledger", "pay-admin", "checkout-frontend"] },
+    { "name": "Platform", "full_name": "Data-AI Platform", "description": "Centralized identity, authorization, and data lineage", "sources": ["platform-monorepo"], "sub_apps": ["authz-api", "data-lineage", "shared-auth"] }
   ]
 }
 ```
+
+For monorepo services, the `sub_apps` field lists the sub-projects within the parent repo. Artifacts use the sub-app name as a suffix (e.g., `SCH-PLATFORM-AUTHZ`, `API-PLATFORM-DATA-LINEAGE`).
 
 ---
 
