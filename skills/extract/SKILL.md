@@ -176,7 +176,7 @@ Extraction complete:
 
 Then re-index:
 ```bash
-python3 /Users/jessi/Projects/seaof-ai/reef/scripts/reef.py index --reef <reef-root>
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/reef.py index --reef <reef-root>
 ```
 
 ---

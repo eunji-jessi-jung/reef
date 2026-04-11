@@ -10,8 +10,8 @@ Re-index all sources, detect what changed, and update affected artifacts. This i
 
 Read these references before doing anything else:
 
-- `/Users/jessi/Projects/seaof-ai/reef/references/artifact-contract.md`
-- `/Users/jessi/Projects/seaof-ai/reef/references/methodology.md`
+- `${CLAUDE_PLUGIN_ROOT}/references/artifact-contract.md`
+- `${CLAUDE_PLUGIN_ROOT}/references/methodology.md`
 
 ## Voice
 
@@ -27,7 +27,7 @@ Find the `.reef/` directory in cwd or parents. Read `project.json` from the reef
 
 Run the source extraction skill to refresh API specs and ERDs from current code. This uses cached recipes from `.reef/source-recipes.json`, so it replays the exact commands that worked during the initial extraction — no stub discovery or environment debugging needed.
 
-Read `/Users/jessi/Projects/seaof-ai/reef/skills/source/SKILL.md` and follow its instructions. Key differences from a first run:
+Read `${CLAUDE_PLUGIN_ROOT}/skills/source/SKILL.md` and follow its instructions. Key differences from a first run:
 
 - **Tier 1 (cached recipe replay) will handle most repos.** The recipe cache stores the command, env vars, PYTHONPATH, and stub list. Replay produces a fresh spec from today's code.
 - **If a cached recipe fails** (new dependency, changed env var), it falls through to Tier 2 (fresh runtime extraction) automatically.
@@ -42,13 +42,13 @@ Source re-extraction complete. 8 API specs and 5 ERDs refreshed from current cod
 ### 3. Re-index sources
 
 ```bash
-python3 /Users/jessi/Projects/seaof-ai/reef/scripts/reef.py index --reef <reef-root>
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/reef.py index --reef <reef-root>
 ```
 
 ### 4. Detect changes
 
 ```bash
-python3 /Users/jessi/Projects/seaof-ai/reef/scripts/reef.py diff --reef <reef-root>
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/reef.py diff --reef <reef-root>
 ```
 
 Present the change summary to the user:
@@ -96,7 +96,7 @@ Process artifacts one at a time. For each affected artifact:
 - Frontmatter field order, determinism rules, and body structure must follow the artifact contract.
 - Run snapshot:
   ```bash
-  python3 /Users/jessi/Projects/seaof-ai/reef/scripts/reef.py snapshot <artifact-id> --reef <reef-root>
+  python3 ${CLAUDE_PLUGIN_ROOT}/scripts/reef.py snapshot <artifact-id> --reef <reef-root>
   ```
 
 **On skip:**
@@ -108,9 +108,9 @@ Process artifacts one at a time. For each affected artifact:
 After all artifacts have been processed (accepted or skipped), run:
 
 ```bash
-python3 /Users/jessi/Projects/seaof-ai/reef/scripts/reef.py rebuild-index --reef <reef-root>
-python3 /Users/jessi/Projects/seaof-ai/reef/scripts/reef.py rebuild-map --reef <reef-root>
-python3 /Users/jessi/Projects/seaof-ai/reef/scripts/reef.py log "Update pass: refreshed N artifacts" --reef <reef-root>
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/reef.py rebuild-index --reef <reef-root>
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/reef.py rebuild-map --reef <reef-root>
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/reef.py log "Update pass: refreshed N artifacts" --reef <reef-root>
 ```
 
 Replace `N` with the count of artifacts that were actually updated (accepted, not skipped).

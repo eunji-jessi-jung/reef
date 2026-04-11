@@ -4,6 +4,14 @@ Most codebase knowledge lives in someone's head, or gets re-derived from scratch
 
 Reef is a Claude Code plugin. It reads source code, asks the right questions, and produces interlinked markdown artifacts with YAML frontmatter, source citations, and honest gap tracking. The AI does the reading and the bookkeeping. You bring the domain knowledge and decide what matters. Output is Obsidian-native, local-first, plain markdown.
 
+## Built For
+
+Reef is designed for **codebases that have services, data, and interfaces**. If your code has APIs (REST, gRPC, GraphQL), persistent data (any database or ORM), and components that talk to each other — Reef will produce rich, interlinked artifacts.
+
+It works well for: microservices, monoliths with modules, full-stack apps, data pipelines, infrastructure-as-code, DevOps toolchains, and anything in between.
+
+It is not the right tool for: native mobile apps with no backend, game engines, embedded firmware, or ML training notebooks. These don't have the data schemas, API surfaces, or service boundaries that Reef is built to document.
+
 ## Guide
 
 For a full step-by-step walkthrough of the workflow (init → scuba → deep → update), see **[docs/guide.md](docs/guide.md)**.

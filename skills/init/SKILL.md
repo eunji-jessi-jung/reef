@@ -41,6 +41,8 @@ Then print a compact orientation block:
 
 ```
 - Best with Opus (Sonnet works, but Opus finds richer connections)
+- Built for codebases with services, data, and interfaces
+  (Not for: pure mobile, game engines, firmware, ML notebooks)
 - Sweet spot: 3-15 repos that form one domain or team ecosystem
   (Bigger org? One reef per team — not one reef for everything)
 - 3 quick questions from you, then full automation
@@ -64,8 +66,8 @@ Do not ask for confirmation. Just present this and move to Step 1.
 
 Before proceeding past Step 0, read these reference files:
 
-1. `/Users/jessi/Projects/seaof-ai/reef/references/artifact-contract.md` — ID conventions and artifact types.
-2. `/Users/jessi/Projects/seaof-ai/reef/references/methodology.md` — voice and personality. Use the Curious Researcher voice throughout.
+1. `${CLAUDE_PLUGIN_ROOT}/references/artifact-contract.md` — ID conventions and artifact types.
+2. `${CLAUDE_PLUGIN_ROOT}/references/methodology.md` — voice and personality. Use the Curious Researcher voice throughout.
 
 ---
 
@@ -204,7 +206,7 @@ Report: "Scaffolding the reef..."
 
 Run:
 ```bash
-python3 /Users/jessi/Projects/seaof-ai/reef/scripts/reef.py init <resolved-reef-path>
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/reef.py init <resolved-reef-path>
 ```
 
 Update `.reef/project.json` with the source paths:
@@ -228,7 +230,7 @@ Report: "Indexing source files..."
 
 Run:
 ```bash
-python3 /Users/jessi/Projects/seaof-ai/reef/scripts/reef.py index --reef <resolved-reef-path>
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/reef.py index --reef <resolved-reef-path>
 ```
 
 Report results: files indexed per source, total count. If a source fails, warn and continue.
@@ -276,7 +278,7 @@ For monorepo services, the `sub_apps` field lists the sub-projects within the pa
 
 Run:
 ```bash
-python3 /Users/jessi/Projects/seaof-ai/reef/scripts/reef.py log "Reef initialized: <name> covering <sources>." --reef <resolved-reef-path>
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/reef.py log "Reef initialized: <name> covering <sources>." --reef <resolved-reef-path>
 ```
 
 Now present a discovery plan to the user. Tailor the details based on what was found during indexing — number of sources, detected frameworks, file counts. The explanation must be **concrete and scannable** — bullet lists, not prose. The user needs to understand what will happen, what tools are involved, and what they might be asked to do.
@@ -328,8 +330,8 @@ After the user confirms, report: "Starting discovery and source extraction..."
 
 Launch **two skills in parallel**:
 
-1. **Snorkel** — Read `/Users/jessi/Projects/seaof-ai/reef/skills/snorkel/SKILL.md` and follow its instructions. Produces structural draft artifacts.
-2. **Source** — Read `/Users/jessi/Projects/seaof-ai/reef/skills/source/SKILL.md` and follow its instructions. Extracts full API specs and ERDs.
+1. **Snorkel** — Read `${CLAUDE_PLUGIN_ROOT}/skills/snorkel/SKILL.md` and follow its instructions. Produces structural draft artifacts.
+2. **Source** — Read `${CLAUDE_PLUGIN_ROOT}/skills/source/SKILL.md` and follow its instructions. Extracts full API specs and ERDs.
 
 Use the Agent tool to run these concurrently. Both are fully automated — no user input needed.
 
@@ -337,8 +339,8 @@ When both complete:
 
 1. **Run the health report** to give the user an immediate visual summary of coverage:
    ```bash
-   python3 /Users/jessi/Projects/seaof-ai/reef/scripts/reef.py lint --reef <reef-root>
-   python3 /Users/jessi/Projects/seaof-ai/reef/scripts/reef.py diff --reef <reef-root>
+   python3 ${CLAUDE_PLUGIN_ROOT}/scripts/reef.py lint --reef <reef-root>
+   python3 ${CLAUDE_PLUGIN_ROOT}/scripts/reef.py diff --reef <reef-root>
    ```
    Render the health report using the same Unicode box-drawing format defined in the snorkel skill's wrap-up step. This is the payoff moment after a long wait — the user needs the visual satisfaction of seeing coverage bars and artifact counts.
 

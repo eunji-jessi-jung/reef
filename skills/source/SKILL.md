@@ -116,56 +116,9 @@ If continuing, skip services that already have both `openapi.json` and `schema.m
 
 ## Step 1 — Detect tech stacks
 
-For each source repo, scan dependency files to identify API frameworks and ORMs:
+For each source repo, scan dependency files to identify API frameworks, ORMs, and package managers.
 
-**Dependency files to check:**
-- Python: `requirements.txt`, `pyproject.toml`, `Pipfile`, `setup.py`, `setup.cfg`
-- Node: `package.json`
-- Go: `go.mod`
-- Java/Kotlin: `build.gradle`, `pom.xml`
-- Ruby: `Gemfile`
-- Rust: `Cargo.toml`
-
-**API framework indicators:**
-
-| Framework | Signal |
-|-----------|--------|
-| FastAPI | `fastapi` in deps |
-| Django REST Framework | `djangorestframework` in deps |
-| Flask | `flask` in deps + `flask-restx` or `flask-smorest` |
-| Express | `express` in deps |
-| NestJS | `@nestjs/core` in deps |
-| Go (gin/echo/chi) | `gin-gonic`, `echo`, `chi` in go.mod |
-| Spring Boot | `spring-boot-starter-web` in deps |
-
-**ORM / data layer indicators:**
-
-| ORM | Signal | Where to find models |
-|-----|--------|---------------------|
-| SQLAlchemy | `sqlalchemy` in deps | `models/`, `db/models/`, files with `Base = declarative_base()` |
-| Django ORM | `django` in deps | `models.py` files in each app |
-| Prisma | `prisma/schema.prisma` file | The schema file itself |
-| TypeORM | `typeorm` in deps | Files with `@Entity()` decorators |
-| Sequelize | `sequelize` in deps | Files in `models/` |
-| GORM | `gorm.io/gorm` in go.mod | Struct definitions with `gorm:` tags |
-| Mongoose | `mongoose` in deps | Files with `new Schema()` |
-| Beanie/ODMantic | `beanie` or `odmantic` in deps | Document model classes |
-| Tortoise ORM | `tortoise-orm` in deps | Model classes inheriting from `Model` |
-| Alembic | `alembic` in deps or `alembic/` directory | Migration files for ground-truth schema |
-
-**Package manager detection:**
-
-| Manager | Signal | Run command |
-|---------|--------|-------------|
-| Poetry | `pyproject.toml` with `[tool.poetry]` + `poetry.lock` | `poetry run python3 -c "..."` |
-| uv | `uv.lock` or `pyproject.toml` with `[tool.uv]` | `uv run python3 -c "..."` |
-| Pipenv | `Pipfile` + `Pipfile.lock` | `pipenv run python3 -c "..."` |
-| pip/venv | `.venv/` or `venv/` directory | `. .venv/bin/activate && python3 -c "..."` |
-| None | No lock file, no venv | `python3 -c "..."` (bare, least likely to work) |
-
-**This is critical for tier 2 (runtime extraction).** Running bare `python3` will fail for most repos because dependencies are installed in the project's virtual environment, not system Python. Always use the package manager's run command.
-
-**Multi-app repos:** Some repos contain multiple applications (e.g., an Nx monorepo with `applications/gateway/`, `applications/ledger/`). Detect each sub-application separately. Check for per-app dependency files and entry points. The package manager may be at the repo root (shared) or per-app.
+**Read `references/tech-stack-signals.md`** for the full detection tables (dependency files, framework indicators, ORM indicators, package manager signals).
 
 Report what was detected:
 
@@ -185,7 +138,7 @@ Tech stacks detected:
 
 ## Step 1.5 — Scaffold output directories and pre-flight checks
 
-**Scaffold first.** Before any extraction, create the full directory structure for every service/app detected in Step 1. This serves two purposes: (a) extraction has somewhere to write, and (b) if extraction fails, the user knows exactly where to place files manually.
+**Scaffold first.** Before any extraction, create the full directory structure for every service/app detected in Step 1:
 
 ```bash
 # For each service/app:
@@ -195,80 +148,7 @@ mkdir -p <reef-root>/sources/schemas/{service}/{sub}
 
 For single-app repos (no sub-applications), omit the sub-directory.
 
-**Pre-flight checks.** Before attempting runtime extraction, quickly check what tools and environments are available. This prevents burning 5 attempts on a fundamentally broken setup.
-
-For each repo/app:
-
-1. **Check venv health.** If a `.venv/` or `venv/` exists, test if the Python binary resolves:
-   ```bash
-   .venv/bin/python --version 2>/dev/null
-   ```
-   - If it resolves: venv is healthy, use it.
-   - If it fails (broken symlink, wrong machine): mark as "broken venv". Check if `uv` is available to fix it (see below).
-   - If no venv exists: check for package manager (poetry/uv) that can create one.
-
-2. **Check tool availability.** Record what's available on this machine:
-   - `poetry --version` / `python3 -m poetry --version`
-   - `uv --version` / `python3 -m uv --version`
-   - `go version` (for Go repos)
-   - `swag --version` (for Go API extraction)
-   - `node --version` / `npx --version` (for Node repos)
-
-3. **Prompt for missing tools.** If a tool is missing but would unlock runtime extraction, tell the user what to install. These are the project's own build tools — the user would need them to develop in that repo anyway. Present all missing tools at once so the user can install them in one go:
-
-   ```
-   Some tools are missing that would enable live-truth extraction:
-
-   poetry  — needed for 4 repos (payments/gateway, payments/ledger, orders, ...)
-             Install: pip install poetry  (or: pipx install poetry)
-
-   swag    — needed for 1 repo (platform/auth, Go API docs)
-             Install: go install github.com/swaggo/swag/cmd/swag@latest
-
-   Want to install them now, or continue without? (I'll fall back to
-   existing specs for repos that need the missing tools.)
-   ```
-
-   **Wait for the user's response.** If they install the tools, re-check availability and proceed with runtime extraction. If they decline, proceed with fallbacks — do not block.
-
-4. **Early skip decision.** If runtime extraction is structurally impossible for a repo AND the user declined to install tools, skip to tier 3/4 without burning attempts:
-   - Go repo but no `go` or `swag` installed → skip to tier 3
-   - Java/Kotlin repo but no JVM → skip to tier 3
-   - Broken venv AND no `uv` or `poetry` to fix it → skip to tier 3
-   - Report: "Skipping runtime extraction for platform/auth — Go project, `swag` not installed."
-
-5. **Fix broken venvs (if tools available).** If a venv is broken, fix it using the best available tool:
-
-   **Preferred: `poetry install`** — if poetry is available, this is the most reliable path. It reads pyproject.toml and poetry.lock, installs everything (including transitive deps), and handles private registries if configured:
-   ```bash
-   cd <app-dir> && poetry install --no-root
-   ```
-
-   **Fallback: `uv`** — if poetry is not available but uv is:
-   ```bash
-   # uv available as command:
-   cd <app-dir> && uv venv --python 3.13 --clear
-   uv pip install --python .venv/bin/python -r <(python3 -c "
-   import re
-   with open('poetry.lock') as f:
-       content = f.read()
-   pkgs = re.findall(r'\[\[package\]\]\nname = \"(.+?)\"\nversion = \"(.+?)\"', content)
-   for name, ver in pkgs:
-       if name not in ('private-pkg-1', 'private-pkg-2'):  # skip private packages
-           print(f'{name}=={ver}')
-   ")
-
-   # uv available only as module:
-   python3 -m uv venv --python 3.13 --clear
-   python3 -m uv pip install --python .venv/bin/python <packages>
-   ```
-   **Important:** Skip private/internal packages during pip install — they'll be handled by stubs. To identify private packages, look for packages that fail to resolve from PyPI or that reference internal registries in `pyproject.toml`.
-
-6. **Determine the run command.** Based on what's available, choose the best way to execute Python in the project's environment:
-   - **`poetry run python`** — best option. Poetry activates the correct venv and sets up the environment. Use this when poetry is available.
-   - **`.venv/bin/python`** — good option. Direct venv access. Use when poetry is not available but the venv is healthy (or was just fixed).
-   - **`uv run python`** — works when uv manages the project.
-   - **bare `python3`** — last resort. Almost never works for projects with dependencies.
+**Pre-flight checks.** Read `references/preflight-checks.md` and follow the 6-step protocol: check venv health, check tool availability, prompt for missing tools, early skip decision, fix broken venvs, determine run command.
 
 Report the pre-flight results:
 
@@ -318,177 +198,13 @@ Report: "Replaying cached recipe for orders..."
 
 ### Tier 2 — Runtime extraction (max 5 attempts)
 
-This tier tries to import the application and dump its API schema at runtime.
+**Read `references/runtime-extraction-protocol.md`** for the full protocol: generation script detection, per-framework extraction commands (FastAPI, Django, Go, NestJS), the 8-step attempt protocol (pre-read config, build PYTHONPATH, handle errors), and stub creation references.
 
-**Step 0 — Check for an existing generation script.** This is the single most reliable runtime path — the repo maintainers already solved the dependency and env var problems. Always check this first.
-
-Search in these locations (in order):
-```bash
-# Per-app scripts (for monorepos):
-ls <app-dir>/scripts/generate_api_schema.py 2>/dev/null
-ls <app-dir>/scripts/generate_openapi.py 2>/dev/null
-
-# Repo-root scripts:
-ls <repo-root>/scripts/generate_api_schema.py 2>/dev/null
-ls <repo-root>/scripts/generate_openapi.py 2>/dev/null
-
-# Broader search if nothing found:
-find <repo-root> -name "generate_api*" -o -name "generate_openapi*" -o -name "openapi_gen*" 2>/dev/null | head -5
-```
-
-If found, run it with the project's package manager and the same env vars / PYTHONPATH / stubs you would use for inline extraction:
-```bash
-# Example for a monorepo app with a generate script:
-PYTHONPATH=<stubs>:<app-src>:<lib-paths> poetry run python scripts/generate_api_schema.py
-```
-
-The script typically writes `openapi.json` to its own directory or to stdout. Check both — if a file appeared in the app directory, use that. If stdout has JSON output, use that.
-
-If the script succeeds, use its output and move to the next repo. Do not attempt inline extraction.
-
-**Step 1 — Use the package manager's run command.** Always wrap Python commands with the run command determined in Step 1.5 (pre-flight). Prefer `poetry run python` when poetry is available — it handles venv activation, PYTHONPATH, and env vars more reliably than direct venv access. Never use bare `python3`.
-
-**FastAPI / Flask-RESTX / Flask-Smorest:**
-```bash
-# Poetry:
-PYTHONPATH=<app-src-dir>:<stubs-dir> poetry run python3 -c "
-import json
-from <app_module>.main import app
-print(json.dumps(app.openapi(), indent=2))
-"
-
-# uv:
-PYTHONPATH=<app-src-dir>:<stubs-dir> uv run python3 -c "
-import json
-from <app_module>.main import app
-print(json.dumps(app.openapi(), indent=2))
-"
-```
-
-**Django REST Framework:**
-```bash
-DJANGO_SETTINGS_MODULE=<project>.settings poetry run python3 -c "
-from rest_framework.schemas.openapi import SchemaGenerator
-import json
-generator = SchemaGenerator(title='API')
-schema = generator.get_schema()
-print(json.dumps(schema, indent=2))
-"
-```
-
-**Go (with swag):**
-```bash
-swag init -g cmd/main.go -q
-# Output: docs/swagger.json — copy and convert if needed
-```
-
-**NestJS / Express with swagger:**
-```bash
-npx ts-node -e "
-const { NestFactory } = require('@nestjs/core');
-const { SwaggerModule } = require('@nestjs/swagger');
-// ... bootstrap and extract
-"
-```
-
-**Protocol for each attempt:**
-
-1. **Find the app entry point.** Read `main.py`, `app.py`, `main.go`, `index.ts`, etc. Identify the app object and its import path.
-
-2. **Pre-read the config/settings class BEFORE your first attempt.** This is the single most impactful step — it prevents 2-3 wasted attempts on missing env vars. Look for:
-   - Pydantic `BaseSettings` classes (common in FastAPI apps)
-   - Config dataclasses or plain classes reading `os.environ`
-   - `.env.example` or `.env.template` files
-   
-   From the settings class, extract ALL required env vars and set dummy values upfront. Common patterns:
-   - Database URLs: `"localhost"`, `"stub"`, `"5432"`, `"27017"`
-   - Auth/JWT secrets: `"stub"`
-   - URLs: `"https://stub"`
-   - JSON-valued vars: `"[]"`, `"{}"`, `'{"key": "stub"}'`
-   - Boolean flags: `"true"`, `"false"`
-   - Cache/timeout values: `"30"`, `"512"`
-
-3. **Build the PYTHONPATH for monorepos.** If the repo has shared libraries (e.g., `libraries/backend-core/src/`), add ALL library source directories to PYTHONPATH. Example for a monorepo with 4 shared libraries:
-   ```
-   PYTHONPATH=app/src:libraries/backend-core/src:libraries/auth/src:libraries/cc-schema/src:libraries/cc-primitive/src:<stubs-dir>
-   ```
-
-4. **Identify the package manager and working directory.** Use the detected package manager from Step 1. For monorepos, run from the directory that contains the `pyproject.toml` / `poetry.lock`. If the project's venv is broken or missing, use `uv` as a fallback:
-   ```bash
-   # Create a fresh venv and install deps
-   uv venv --python 3.11
-   uv pip install -r <(poetry export -f requirements.txt --without-hashes 2>/dev/null || echo "")
-   # Or install key packages directly
-   uv pip install fastapi uvicorn pydantic sqlalchemy
-   ```
-
-5. **Run the extraction command** using `poetry run` / `uv run` / `pipenv run`.
-
-6. **If it succeeds** — save output as `openapi.json`, write meta, cache the recipe (including env stubs and PYTHONPATH), move on.
-
-7. **If it fails** — read the error message carefully:
-   - **Missing environment variable** (e.g., `KeyError: 'DB_HOST'`): You missed it in the pre-read. Add the dummy value and retry.
-   - **Missing private package from a private registry** (e.g., `ModuleNotFoundError: No module named 'internal_auth_client'`): This is common in enterprise repos. The package is hosted on a private PyPI/Artifact Registry and can't be pip-installed without auth. Create a comprehensive stub — see below.
-   - **Missing sub-module** (e.g., `No module named 'auth_client.api.permissions_api'`): The stub needs deeper structure. Read the import statements in the traceback to understand exactly which sub-modules and classes are needed.
-   - **Decorator/function signature mismatch**: Some stubs need to return actual decorators, not just `None`. If a stub is used as `@check_authorization(...)`, the stub must return a callable that returns a decorator. See stub patterns below.
-   - **Broken venv / wrong Python version**: Use `uv` to create a fresh venv with the right Python version.
-   - **Other import error**: Read the full traceback. If fixable, fix and retry. If fundamental (requires a running database, C extension), give up.
-
-8. **After 5 failed attempts** — report what went wrong, fall through to Tier 3 (existing spec) or Tier 4 (code reading).
-
-**Stub creation — the simple stub:**
-```python
-# For packages where only top-level import matters
-# <stub-dir>/<package_name>/__init__.py
-class _Stub:
-    def __init__(self, *a, **kw): pass
-    def __getattr__(self, name): return lambda *a, **kw: None
-    def __call__(self, *a, **kw): return self
-
-def __getattr__(name):
-    return _Stub()
-```
-
-**Stub creation — the comprehensive stub (for generated API clients, auth libraries):**
-
-When the simple stub fails because the code imports specific sub-modules and classes, build a deeper structure. This is common with generated API clients (OpenAPI-generated SDKs):
-
-```
-<stub-dir>/
-  <package_name>/
-    __init__.py                    # module-level __getattr__
-    api/
-      __init__.py                  # module-level __getattr__
-      permissions_api.py           # class PermissionsApi: def __init__(self, api_client=None): pass
-      resource_api.py              # class ResourceApi: ...
-      user_api.py                  # class UserApi: ...
-    models/
-      __init__.py                  # module-level __getattr__
-    rest.py                        # class RESTResponse: status=200; data=b'{}'
-    api_client.py                  # class ApiClient: def __init__(self, configuration=None): ...
-    configuration.py               # class Configuration: def __init__(self, host=None): ...
-    exceptions.py                  # class ApiException(Exception): pass
-    decorators/
-      __init__.py
-      auth_decorators.py           # see decorator pattern below
-```
-
-**Decorator stub pattern** — when a private package provides decorators used in route definitions:
-```python
-# decorators/auth_decorators.py
-class AuthConfig: pass
-class AuthError(Exception): pass
-
-def check_authorization(*args, **kwargs):
-    """Return a no-op decorator that preserves the original function."""
-    def decorator(fn):
-        return fn
-    return decorator
-```
-
-The key insight: `check_authorization` is used as `@check_authorization(resource=..., action=...)` — it must be a function that returns a decorator, not a plain function. Getting this wrong causes `TypeError: 'NoneType' object is not callable`.
-
-**Important:** Create stubs in a temp directory. Add to `PYTHONPATH` / `NODE_PATH`. Clean up after extraction. Never modify the source repo.
+Key principles:
+- Check for existing generation scripts first (most reliable path)
+- Pre-read config/settings to discover ALL env vars before first attempt
+- Always use the package manager's run command — never bare `python3`
+- Max 5 attempts, then fall through to Tier 3
 
 ### Tier 3 — Existing spec with staleness warning (fallback)
 
@@ -661,46 +377,17 @@ After all repos are processed, write `.reef/source-recipes.json`:
 {
   "version": 1,
   "recipes": {
-    "payments/gateway": {
-      "api": {
-        "tier": 2,
-        "method": "fastapi_oneshot",
-        "command": "python3 -c \"from app.main import app; import json; print(json.dumps(app.openapi(), indent=2))\"",
-        "app_path": "applications/gateway/src",
-        "env_stubs": {"DB_HOST": "localhost", "AUTH_SECRET": "stub"},
-        "dep_stubs": ["internal_auth_client"],
-        "output": "sources/apis/payments/gateway/openapi.json",
-        "last_success": "2026-04-11"
-      },
-      "erd": {
-        "tier": 2,
-        "method": "alembic_migration_reading",
-        "source_path": "applications/gateway/alembic/versions/",
-        "output": "sources/schemas/payments/gateway/schema.md",
-        "last_success": "2026-04-11"
-      }
-    },
-    "orders": {
-      "api": {
-        "tier": 2,
-        "method": "fastapi_oneshot",
-        "command": "python3 -c \"from app.main import app; import json; print(json.dumps(app.openapi(), indent=2))\"",
-        "app_path": "src",
-        "env_stubs": {"DB_HOST": "localhost", "AUTH_SECRET": "stub"},
-        "dep_stubs": ["internal_auth_client"],
-        "output": "sources/apis/orders/openapi.json",
-        "last_success": "2026-04-11"
-      },
-      "erd": null
+    "{service}/{sub}": {
+      "api": { "tier": 2, "method": "...", "command": "...", "app_path": "...", "env_stubs": {}, "dep_stubs": [], "output": "...", "last_success": "ISO date" },
+      "erd": { "tier": 2, "method": "...", "source_path": "...", "output": "...", "last_success": "ISO date" }
     }
   }
 }
 ```
 
-- Recipe keys use the service/sub path (matching the output directory), not repo names.
-- **Only cache runtime extraction recipes** (tier 2). Never cache tier 3 (existing file copies) — those would just replay a stale copy forever.
+- Recipe keys use the service/sub path, not repo names.
+- **Only cache runtime extraction recipes** (tier 2). Never cache tier 3 — those would replay a stale copy forever.
 - Set `null` for repos with no API or no data layer.
-- The `tier` field records which tier succeeded, for diagnostics.
 
 ---
 

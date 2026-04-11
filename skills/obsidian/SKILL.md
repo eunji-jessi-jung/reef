@@ -77,7 +77,7 @@ If the marker exists, say nothing extra. Just open.
 
 Run:
 ```bash
-python3 /Users/jessi/Projects/seaof-ai/reef/scripts/reef.py log "Opened reef in Obsidian" --reef <reef-root>
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/reef.py log "Opened reef in Obsidian" --reef <reef-root>
 ```
 
 ---

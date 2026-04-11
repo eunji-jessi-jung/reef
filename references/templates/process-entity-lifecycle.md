@@ -2,7 +2,7 @@
 
 Use this template for PROC- artifacts that document a core domain entity — its definition, relationships, and lifecycle (if stateful).
 
-**Naming convention:** `proc-{service}-{entity}-lifecycle` (e.g., `proc-cdm-case-lifecycle`, `proc-ctl-job-lifecycle`)
+**Naming convention:** `proc-{service}-{entity}-lifecycle` (e.g., `proc-payments-order-lifecycle`, `proc-fulfillment-shipment-lifecycle`)
 
 **When to use:** For every core entity identified in the scuba manifest. Core = 3+ non-FK fields, or API resource, or FK target for 2+ other entities.
 

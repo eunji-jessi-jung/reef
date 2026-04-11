@@ -10,8 +10,8 @@ Read-only validation and freshness report. This skill does NOT modify artifacts.
 
 Read these references before doing anything else:
 
-- `/Users/jessi/Projects/seaof-ai/reef/references/artifact-contract.md`
-- `/Users/jessi/Projects/seaof-ai/reef/references/methodology.md`
+- `${CLAUDE_PLUGIN_ROOT}/references/artifact-contract.md`
+- `${CLAUDE_PLUGIN_ROOT}/references/methodology.md`
 
 ## Voice
 
@@ -28,8 +28,8 @@ Find the `.reef/` directory in cwd or parents. Read `project.json` from the reef
 Run both commands:
 
 ```bash
-python3 /Users/jessi/Projects/seaof-ai/reef/scripts/reef.py lint --reef <reef-root>
-python3 /Users/jessi/Projects/seaof-ai/reef/scripts/reef.py diff --reef <reef-root>
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/reef.py lint --reef <reef-root>
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/reef.py diff --reef <reef-root>
 ```
 
 These cover the seven mechanical checks:

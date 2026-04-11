@@ -1,10 +1,10 @@
 ---
-description: "Auto-discover 3-6 draft artifacts from source code"
+description: "Auto-discover 5-10 draft artifacts per source from code"
 ---
 
 # reef:snorkel
 
-Question-guided auto-discovery. Reads source code, uses the discovery question bank for direction, and produces 3-6 draft artifacts per source. No user input needed.
+Question-guided auto-discovery. Reads source code, uses the discovery question bank for direction, and produces 5-10 draft artifacts per source. No user input needed.
 
 The key difference from a blind scan: snorkel reads the question bank and uses it to decide what to look at, what to document, and what to flag as unknown. Questions are the steering mechanism.
 
@@ -14,7 +14,7 @@ The key difference from a blind scan: snorkel reads the question bank and uses i
 
 1. **Find the reef root.** Look for `.reef/` in cwd or parent directories. If not found: "No reef found. Run `/reef:init` first."
 2. **Read `.reef/project.json`** for project name, source paths, and service groupings. If no sources: "No sources configured. Run `/reef:init` to add source paths."
-3. **Read `/Users/jessi/Projects/seaof-ai/reef/references/methodology.md`** — voice and personality.
+3. **Read `${CLAUDE_PLUGIN_ROOT}/references/methodology.md`** — voice and personality.
 4. **Read `.reef/questions.json`** — the discovery questions. These steer what you investigate and document.
 5. **Read existing artifacts** in `artifacts/` to avoid duplicates.
 
@@ -22,7 +22,7 @@ The key difference from a blind scan: snorkel reads the question bank and uses i
 
 After loading context, check if snorkel has already partially run by comparing existing artifacts against what `project.json` services would produce:
 
-- Count existing SYS-, SCH-, API-, CON-, GLOSSARY- artifacts
+- Count existing SYS-, SCH-, API-, CON-, GLOSSARY-, PROC-, RISK-, DEC- artifacts
 - Compare against the number of services and source repos configured
 
 If artifacts already exist:
@@ -32,6 +32,9 @@ Found existing snorkel artifacts:
   SYS-: N (expected: M based on services)
   SCH-: N (expected: M based on schemas)
   CON-: N (expected: M based on service pairs)
+  PROC-: N (auth + runtime)
+  RISK-: N
+  DEC-: N
   GLOSSARY-: N
 
 Options:
@@ -52,7 +55,7 @@ Report: "Refreshing the source index..."
 
 Run:
 ```bash
-python3 /Users/jessi/Projects/seaof-ai/reef/scripts/reef.py index --reef <reef-root>
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/reef.py index --reef <reef-root>
 ```
 
 Report results in natural language.
@@ -61,7 +64,7 @@ Report results in natural language.
 
 ## Step 2 — Generate discovery questions
 
-Read `/Users/jessi/Projects/seaof-ai/reef/references/understanding-template.md`. For snorkel, focus on the **Snorkel (S1-S8)** questions.
+Read `${CLAUDE_PLUGIN_ROOT}/references/understanding-template.md`. For snorkel, focus on the **Snorkel (S1-S8)** questions.
 
 For each source, do a quick structural scan:
 - Read the 2-level directory tree
@@ -145,8 +148,15 @@ Generate artifacts guided by what you learned. For each source, produce:
 3. **API-** for API surfaces — use behavior question findings. Group endpoints, note auth patterns, describe key request flows. **Same rule: one API- per independent app** if the source has multiple apps with separate API surfaces.
 4. **GLOSSARY-** if domain terms emerged that need definition.
 5. **CON-** for cross-system boundaries — use cross-system question findings. Name both parties, describe what flows between them, cite the client/server code.
+6. **PROC- runtime architecture** — if docker-compose, Helm, multiple entry points, or background workers are detected, generate a thin PROC- documenting the runtime topology: what processes run, what databases each connects to, sync vs async paths. 3-5 Key Facts. Only generate if the service has more than a single API server process.
+7. **PROC- auth patterns** — if JWT validation, RBAC decorators, OAuth config, API keys, or service accounts are found during Step 3 scan, generate a draft PROC- for the authentication/authorization approach: mechanism, enforcement point, identity provider. 3-5 Key Facts. This gives scuba a foundation to deepen.
+8. **RISK-** per service — during Step 3, count TODO/FIXME/HACK/XXX comments. If 3+ related signals are found, generate a RISK- artifact grouping them by theme (data integrity, auth gaps, error handling, tech debt). Severity always "medium" at snorkel depth. Template: `${CLAUDE_PLUGIN_ROOT}/references/templates/risk-service.md`.
+9. **DEC-** for observable decisions — when the scan reveals a non-obvious technology or architecture choice (e.g., dual database strategy, custom auth instead of a standard provider, specific queue system, sync-over-async), generate a stub DEC- with Context, Decision, and `known_unknowns: ["Rationale not available from code alone"]`. Scuba will deepen these.
+10. **GLOSSARY-{SERVICE}** per service — if a service has 5+ unique domain terms from Step 3, generate a per-service glossary in addition to the unified GLOSSARY-. Per-service glossaries are authoritative within their scope. Template: `${CLAUDE_PLUGIN_ROOT}/references/templates/glossary-service.md`.
 
-**Target: 3-6 artifacts per source.** For a 4-source reef, that means 12-24 artifacts total. Adjust based on codebase complexity — a simple service might only warrant 2-3, a complex one might need 6.
+**Target: 5-10 artifacts per source.** For a 4-source reef, that means 20-40 artifacts total. Multi-app sources (monorepos with 3+ sub-apps) should generate 8-12 artifacts. Adjust based on codebase complexity — a trivial single-file service might only warrant 3, but most services warrant 6-8.
+
+**Parallelism:** Artifact generation is independent per service. Use the Agent tool to generate all artifacts for multiple services concurrently — launch one agent per service, each responsible for that service's full artifact batch (SYS-, SCH-, API-, PROC-, RISK-, etc.). All agents in a single message.
 
 ### For each artifact
 
@@ -209,7 +219,7 @@ Each fact is an atomic, verifiable claim linked to its source with `→`.
 
 **d. Snapshot:**
 ```bash
-python3 /Users/jessi/Projects/seaof-ai/reef/scripts/reef.py snapshot <artifact-id-lowercase> --reef <reef-root>
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/reef.py snapshot <artifact-id-lowercase> --reef <reef-root>
 ```
 
 **e. Present to the user.** Show each artifact one at a time as it's written.
@@ -245,9 +255,14 @@ If `/reef:source` ran in parallel with snorkel, extracted API specs and ERDs are
 3. Rewrite the artifact body with complete data model documentation:
    - All tables with full field lists (types, nullability, PK/FK, indexes)
    - Relationship cardinalities
-   - Mermaid ERD diagram
+   - **Mermaid `erDiagram` block (REQUIRED)** — this is a hard requirement, not optional. Every SCH- upgraded from an ERD must include a Mermaid ER diagram. Keep diagrams concise: max 15 entities per diagram, split into multiple diagrams if larger.
 4. Update frontmatter same as API artifacts.
 5. Run snapshot after writing.
+
+**Quality mandates for spec-driven upgrades:**
+
+- Every SCH- upgraded from an ERD **must** include a Mermaid `erDiagram` block. No exceptions.
+- Every API- upgraded from OpenAPI **must** include one worked JSON request/response example for the most representative endpoint. Place it in a `### Worked Example` subsection after the endpoint tables.
 
 **Parallelism:** Each artifact upgrade is independent. Use the Agent tool to upgrade all eligible SCH- and API- artifacts concurrently — launch one agent per artifact, all in a single message.
 
@@ -308,15 +323,15 @@ This gives `/reef:test` and `/reef:scuba` a clear picture of what's covered and 
 
 Run:
 ```bash
-python3 /Users/jessi/Projects/seaof-ai/reef/scripts/reef.py rebuild-index --reef <reef-root>
-python3 /Users/jessi/Projects/seaof-ai/reef/scripts/reef.py rebuild-map --reef <reef-root>
-python3 /Users/jessi/Projects/seaof-ai/reef/scripts/reef.py log "Snorkel pass: generated N artifacts, answered M/T questions" --reef <reef-root>
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/reef.py rebuild-index --reef <reef-root>
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/reef.py rebuild-map --reef <reef-root>
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/reef.py log "Snorkel pass: generated N artifacts, answered M/T questions" --reef <reef-root>
 ```
 
 Then run the health report:
 ```bash
-python3 /Users/jessi/Projects/seaof-ai/reef/scripts/reef.py lint --reef <reef-root>
-python3 /Users/jessi/Projects/seaof-ai/reef/scripts/reef.py diff --reef <reef-root>
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/reef.py lint --reef <reef-root>
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/reef.py diff --reef <reef-root>
 ```
 
 Render a compact health summary using this exact format (copy the Unicode box-drawing characters directly):

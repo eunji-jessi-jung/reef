@@ -44,6 +44,7 @@ VALID_STATUSES = {"draft", "active", "deprecated"}
 ARTIFACT_SUBDIRS = [
     "systems", "schemas", "apis", "processes",
     "decisions", "glossary", "contracts", "risks",
+    "patterns",
 ]
 
 # Map type prefix to section name for index generation
@@ -51,11 +52,12 @@ TYPE_SECTIONS = {
     "SYS": "Systems",
     "SCH": "Schemas",
     "API": "APIs",
-    "PRC": "Processes",
+    "PROC": "Processes",
     "DEC": "Decisions",
-    "GLO": "Glossary",
+    "GLOSSARY": "Glossary",
     "CON": "Contracts",
-    "RSK": "Risks",
+    "RISK": "Risks",
+    "PAT": "Patterns",
 }
 
 # ---------------------------------------------------------------------------
@@ -179,6 +181,23 @@ def collect_artifacts(reef: Path) -> list[tuple[Path, dict]]:
     for subdir in ARTIFACT_SUBDIRS:
         sd = artifacts_dir / subdir
         if not sd.is_dir():
+            continue
+        for f in sd.iterdir():
+            if f.suffix == ".md" and f.is_file():
+                fm = parse_frontmatter(f)
+                if fm:
+                    results.append((f, fm))
+    return results
+
+
+def collect_artifacts_from_dir(artifacts_dir: Path) -> list[tuple[Path, dict]]:
+    """Collect artifacts from a bare artifacts/ directory (no .reef/ required)."""
+    results = []
+    if not artifacts_dir.is_dir():
+        return results
+    # Check all known subdirs plus any extra ones (like 'patterns')
+    for sd in artifacts_dir.iterdir():
+        if not sd.is_dir() or sd.name.startswith("."):
             continue
         for f in sd.iterdir():
             if f.suffix == ".md" and f.is_file():
@@ -737,7 +756,7 @@ def cmd_rebuild_index(args) -> None:
     grouped = {}
     for _, fm in artifacts:
         aid = fm.get("id", "")
-        prefix = aid.split("-")[0] if "-" in aid else aid
+        prefix = (aid.split("-")[0] if "-" in aid else aid).upper()
         grouped.setdefault(prefix, []).append(fm)
 
     # Sort each group by id
@@ -774,6 +793,122 @@ def cmd_rebuild_index(args) -> None:
 # ---------------------------------------------------------------------------
 # Subcommand: log
 # ---------------------------------------------------------------------------
+
+
+def cmd_inventory(args) -> None:
+    """Emit a structured inventory of all artifacts, grouped by type."""
+    if args.artifacts_dir:
+        # Direct artifacts directory mode (for non-reef repos like knowledge bases)
+        artifacts = collect_artifacts_from_dir(Path(args.artifacts_dir))
+        reef_path = args.artifacts_dir
+    else:
+        reef = find_reef_root(args.reef)
+        artifacts = collect_artifacts(reef)
+        reef_path = str(reef)
+
+    by_type: dict[str, list[dict]] = {}
+    for path, fm in artifacts:
+        aid = fm.get("id", path.stem)
+        atype = fm.get("type", "unknown")
+        entry = {
+            "id": aid,
+            "title": fm.get("title", ""),
+            "status": fm.get("status", ""),
+            "domain": fm.get("domain", ""),
+        }
+        by_type.setdefault(atype, []).append(entry)
+
+    # Sort each group by id
+    for t in by_type:
+        by_type[t].sort(key=lambda x: x["id"])
+
+    total = sum(len(v) for v in by_type.values())
+    summary = {t: len(v) for t, v in sorted(by_type.items())}
+
+    emit({
+        "reef": reef_path,
+        "total": total,
+        "summary": summary,
+        "artifacts": {t: v for t, v in sorted(by_type.items())},
+    })
+
+
+def cmd_gap(args) -> None:
+    """Compare two artifact sets and emit the delta."""
+    # Collect from reef (automated)
+    reef = find_reef_root(args.reef)
+    reef_artifacts = collect_artifacts(reef)
+
+    # Collect from baseline
+    baseline_dir = Path(args.baseline)
+    if (baseline_dir / ".reef").is_dir():
+        baseline_artifacts = collect_artifacts(baseline_dir)
+    elif baseline_dir.is_dir():
+        baseline_artifacts = collect_artifacts_from_dir(baseline_dir)
+    else:
+        emit({"status": "error", "message": f"Baseline not found: {baseline_dir}"})
+        return
+
+    # Build id sets grouped by type
+    def group_by_type(artifacts):
+        by_type = {}
+        for path, fm in artifacts:
+            aid = fm.get("id", path.stem)
+            atype = fm.get("type", "unknown")
+            by_type.setdefault(atype, {})[aid] = {
+                "title": fm.get("title", ""),
+                "status": fm.get("status", ""),
+                "domain": fm.get("domain", ""),
+            }
+        return by_type
+
+    reef_by_type = group_by_type(reef_artifacts)
+    base_by_type = group_by_type(baseline_artifacts)
+
+    all_types = sorted(set(list(reef_by_type.keys()) + list(base_by_type.keys())))
+
+    per_type = {}
+    total_reef = 0
+    total_base = 0
+    total_missing = 0
+    total_extra = 0
+    total_matched = 0
+
+    for t in all_types:
+        reef_ids = set(reef_by_type.get(t, {}).keys())
+        base_ids = set(base_by_type.get(t, {}).keys())
+
+        missing = sorted(base_ids - reef_ids)
+        extra = sorted(reef_ids - base_ids)
+        matched = sorted(reef_ids & base_ids)
+
+        per_type[t] = {
+            "reef_count": len(reef_ids),
+            "baseline_count": len(base_ids),
+            "matched": len(matched),
+            "missing": [{"id": mid, **base_by_type[t][mid]} for mid in missing],
+            "extra": [{"id": eid, **reef_by_type[t][eid]} for eid in extra],
+        }
+
+        total_reef += len(reef_ids)
+        total_base += len(base_ids)
+        total_missing += len(missing)
+        total_extra += len(extra)
+        total_matched += len(matched)
+
+    coverage_pct = round(total_reef / total_base * 100, 1) if total_base else 0
+
+    emit({
+        "reef": str(reef),
+        "baseline": str(baseline_dir),
+        "total_reef": total_reef,
+        "total_baseline": total_base,
+        "coverage_pct": coverage_pct,
+        "matched": total_matched,
+        "missing_from_reef": total_missing,
+        "extra_in_reef": total_extra,
+        "per_type": per_type,
+    })
 
 
 def cmd_log(args) -> None:
@@ -840,6 +975,18 @@ def main() -> None:
     p_ridx = sub.add_parser("rebuild-index", help="Rebuild index.md catalog")
     p_ridx.add_argument("--reef", default=None, help="Path to reef root")
     p_ridx.set_defaults(func=cmd_rebuild_index)
+
+    # gap
+    p_gap = sub.add_parser("gap", help="Compare reef artifacts against a baseline")
+    p_gap.add_argument("--reef", default=None, help="Path to reef root")
+    p_gap.add_argument("--baseline", required=True, help="Path to baseline (reef root or artifacts/ directory)")
+    p_gap.set_defaults(func=cmd_gap)
+
+    # inventory
+    p_inv = sub.add_parser("inventory", help="Emit structured artifact inventory as JSON")
+    p_inv.add_argument("--reef", default=None, help="Path to reef root")
+    p_inv.add_argument("--artifacts-dir", default=None, help="Direct path to artifacts/ directory (for non-reef repos)")
+    p_inv.set_defaults(func=cmd_inventory)
 
     # log
     p_log = sub.add_parser("log", help="Append entry to evolution log")

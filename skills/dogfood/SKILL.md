@@ -8,13 +8,13 @@ You are helping the user capture test observations during a dogfooding session o
 
 ## What this skill does
 
-When the user runs `/reef:dogfood`, ask what they want to log. Append their observation to the dogfooding test log at `/Users/jessi/Projects/seaof-ai/reef/dogfood.md`.
+When the user runs `/reef:dogfood`, ask what they want to log. Append their observation to the dogfooding test log at `${CLAUDE_PLUGIN_ROOT}/dogfood.md`.
 
 ## Behavior
 
 1. Ask: "What did you notice?"
 2. The user describes a bug, friction point, positive experience, or suggestion.
-3. Append the note to `/Users/jessi/Projects/seaof-ai/reef/dogfood.md` under the current date heading, with a timestamp and category tag.
+3. Append the note to `${CLAUDE_PLUGIN_ROOT}/dogfood.md` under the current date heading, with a timestamp and category tag.
 
 ## Format
 

@@ -10,8 +10,8 @@ Maximum depth on a specific area. Exhaustive line-by-line tracing for critical s
 
 Read these references before doing anything else:
 
-- `/Users/jessi/Projects/seaof-ai/reef/references/artifact-contract.md`
-- `/Users/jessi/Projects/seaof-ai/reef/references/methodology.md`
+- `${CLAUDE_PLUGIN_ROOT}/references/artifact-contract.md`
+- `${CLAUDE_PLUGIN_ROOT}/references/methodology.md`
 
 ## Voice
 
@@ -83,41 +83,7 @@ As the deep dive proceeds:
 
 When creating or updating an artifact, follow the full artifact contract.
 
-**Frontmatter field order** (all fields required, in this order):
-
-```yaml
-id:
-type:
-title:
-domain:
-status:
-last_verified:
-freshness_note:
-freshness_triggers:
-known_unknowns:
-tags:
-aliases:
-relates_to:
-sources:
-notes:
-```
-
-**Body requirements:**
-
-- Include all required body sections for the artifact type (per the contract).
-- Key Facts section with source citations using `→` syntax.
-- `## Related` section with wikilinks that match `relates_to` in frontmatter.
-
-**Determinism rules** (for reproducible diffs):
-
-- `relates_to` sorted alphabetically by target.
-- `sources` sorted alphabetically by ref.
-- `freshness_triggers` sorted alphabetically.
-
-**Validation** — same blocking and warning checks as `/reef:artifact`:
-
-- Blocking: YAML parseable, all required fields present, `id` matches filename, valid enums, non-empty `freshness_note`, Key Facts present (except Glossary).
-- Warning: `relates_to` targets resolve, `sources` resolve, required body sections present, wikilinks match frontmatter.
+**Read `references/artifact-contract.md`** for frontmatter field order, body requirements, determinism rules, and validation checks. All rules apply here.
 
 Status may be "active" if confidence is high from deep reading. Use "draft" when the code was ambiguous or the user flagged uncertainty.
 
@@ -126,10 +92,10 @@ Status may be "active" if confidence is high from deep reading. Use "draft" when
 Run these in order after each artifact file is written and accepted:
 
 ```bash
-python3 /Users/jessi/Projects/seaof-ai/reef/scripts/reef.py snapshot <artifact-id> --reef <reef-root>
-python3 /Users/jessi/Projects/seaof-ai/reef/scripts/reef.py rebuild-index --reef <reef-root>
-python3 /Users/jessi/Projects/seaof-ai/reef/scripts/reef.py rebuild-map --reef <reef-root>
-python3 /Users/jessi/Projects/seaof-ai/reef/scripts/reef.py log "Created <artifact-id>" --reef <reef-root>
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/reef.py snapshot <artifact-id> --reef <reef-root>
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/reef.py rebuild-index --reef <reef-root>
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/reef.py rebuild-map --reef <reef-root>
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/reef.py log "Created <artifact-id>" --reef <reef-root>
 ```
 
 Use "Updated" instead of "Created" in the log message when updating an existing artifact.

@@ -10,8 +10,8 @@ Create or update a single artifact with full contract enforcement.
 
 Read these references before doing anything else:
 
-- `/Users/jessi/Projects/seaof-ai/reef/references/artifact-contract.md`
-- `/Users/jessi/Projects/seaof-ai/reef/references/methodology.md`
+- `${CLAUDE_PLUGIN_ROOT}/references/artifact-contract.md`
+- `${CLAUDE_PLUGIN_ROOT}/references/methodology.md`
 
 ## Voice
 
@@ -29,7 +29,7 @@ Walk up from cwd looking for a `.reef/` directory. That parent is the reef root.
 
 1. Determine the artifact type from context (system, schema, api, process, decision, glossary, connection, risk).
 2. Generate the artifact ID following the conventions below.
-3. Read the matching template from `/Users/jessi/Projects/seaof-ai/reef/references/templates/`.
+3. Read the matching template from `${CLAUDE_PLUGIN_ROOT}/references/templates/`.
 4. Proceed to evidence gathering.
 
 **Update mode** — the user names an existing artifact:
@@ -52,34 +52,7 @@ Follow the artifact contract exactly.
 
 **Frontmatter field order** (all fields required, in this order):
 
-```yaml
-id:
-type:
-title:
-domain:
-status:
-last_verified:
-freshness_note:
-freshness_triggers:
-known_unknowns:
-tags:
-aliases:
-relates_to:
-sources:
-notes:
-```
-
-**Body requirements:**
-
-- Include all required body sections for the artifact type (per the contract).
-- Key Facts section with source citations using `→` syntax.
-- `## Related` section with wikilinks that match `relates_to` in frontmatter.
-
-**Determinism rules** (for reproducible diffs):
-
-- `relates_to` sorted alphabetically by target.
-- `sources` sorted alphabetically by ref.
-- `freshness_triggers` sorted alphabetically.
+**Read `references/artifact-contract.md`** for frontmatter field order, body requirements, determinism rules, and validation checks. All rules apply.
 
 ### 5. Glossary cross-check
 
@@ -117,10 +90,10 @@ Report any warnings to the user after writing.
 Run these in order after the artifact file is written and accepted:
 
 ```bash
-python3 /Users/jessi/Projects/seaof-ai/reef/scripts/reef.py snapshot <artifact-id> --reef <reef-root>
-python3 /Users/jessi/Projects/seaof-ai/reef/scripts/reef.py rebuild-index --reef <reef-root>
-python3 /Users/jessi/Projects/seaof-ai/reef/scripts/reef.py rebuild-map --reef <reef-root>
-python3 /Users/jessi/Projects/seaof-ai/reef/scripts/reef.py log "Created <artifact-id>" --reef <reef-root>
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/reef.py snapshot <artifact-id> --reef <reef-root>
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/reef.py rebuild-index --reef <reef-root>
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/reef.py rebuild-map --reef <reef-root>
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/reef.py log "Created <artifact-id>" --reef <reef-root>
 ```
 
 Use "Updated" instead of "Created" in the log message when in update mode.

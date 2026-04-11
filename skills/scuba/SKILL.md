@@ -28,9 +28,9 @@ You MUST complete these phases IN ORDER. Do NOT skip any. Do NOT jump ahead.
 
 Read these references before doing anything else:
 
-- `/Users/jessi/Projects/seaof-ai/reef/references/artifact-contract.md`
-- `/Users/jessi/Projects/seaof-ai/reef/references/methodology.md`
-- `/Users/jessi/Projects/seaof-ai/reef/references/understanding-template.md` — focus on Scuba (C1-C10) questions
+- `${CLAUDE_PLUGIN_ROOT}/references/artifact-contract.md`
+- `${CLAUDE_PLUGIN_ROOT}/references/methodology.md`
+- `${CLAUDE_PLUGIN_ROOT}/references/understanding-template.md` — focus on Scuba (C1-C10) questions
 
 ## Voice
 
@@ -146,20 +146,55 @@ One per service where auth patterns exist (detected during Step 2 context loadin
 
 One per scuba-level signal identified in Step 2.
 
+### RISK- per service
+
+One per service that does not already have a RISK- artifact with 5+ findings. Even if snorkel created a thin RISK-, scuba deepens it with broader code scanning.
+
+### DEC- observable decisions
+
+One per observable technology/architecture choice that lacks a DEC- artifact. Scan for: database choice rationale, auth provider selection, API framework choice, monorepo structure decisions, sync vs async patterns, soft vs hard delete, versioning strategy, dual-database architectures.
+
+### GLOSSARY- per service
+
+One per service that lacks a per-service GLOSSARY-{SERVICE} artifact. Per-service glossaries are authoritative within their scope and complement the unified glossary.
+
+### PROC- flow catalogs
+
+For services with pipeline/orchestration/job systems (detected by: Prefect flows, Celery tasks, Airflow DAGs, background job classes, sequential status progressions). One per service or subsystem with distinct flow sets.
+
+### PROC- multi-app comparison pairs
+
+For services where the same domain concept is implemented differently across sub-apps (e.g., parallel directory structures, similar-but-not-identical models, domain-branching logic). One per {concept} x {app-pair}.
+
+### SCH- per-collection (document stores)
+
+For MongoDB/document-store services with 3+ collections. One SCH- per collection, documenting fields, indexes, embedded vs referenced docs, and nesting structure. This complements the unified SCH- with per-collection depth.
+
+### SCH- field lineage
+
+For core entities with complex data origins (ingestion pipelines, ETL, computed fields). One per entity group, documenting where each non-trivial field comes from (API input, external system, computed, copied from another entity, system-generated).
+
 ### Summary
 
 Print the full manifest with counts:
 
 ```
 Artifact generation manifest:
-  API-  artifacts: N planned (M new, K updates)
-  SCH-  artifacts: N planned (M new, K updates)
-  PROC- entities:  N planned (from X core entities across Y schemas)
-  CON-  contracts: N planned (M new, K updates)
-  PROC- auth:      N planned
-  PROC-/DEC-:      N planned (from pattern signals)
+  API-  artifacts:       N planned (M new, K updates)
+  SCH-  artifacts:       N planned (M new, K updates)
+  SCH-  per-collection:  N planned
+  SCH-  field lineage:   N planned
+  PROC- entities:        N planned (from X core entities across Y schemas)
+  PROC- auth:            N planned
+  PROC- flow catalogs:   N planned
+  PROC- comparisons:     N planned
+  PROC-/DEC- patterns:   N planned (from pattern signals)
+  CON-  contracts:       N planned (M new, K updates)
+  RISK- per service:     N planned
+  DEC-  observable:      N planned
+  GLOSSARY- per service: N planned
   ──────────────
-  Total:           N artifacts
+  Total:                 N artifacts
 ```
 
 Save the manifest to `.reef/scuba-manifest.json` with this structure:
@@ -198,206 +233,85 @@ If the user wants to adjust scope, let them remove categories from the manifest 
 
 ## Step 3 — Phase 1: Automated Deepening
 
-No user input after confirmation. Work through the manifest systematically — every planned artifact must be addressed (completed or explicitly skipped with reason). Report progress as you go: "Writing API-PAYMENTS-GATEWAY (1/9 API artifacts)...", "Writing PROC-PAYMENTS-ORDER-LIFECYCLE (3/24 entity artifacts)...".
+No user input after confirmation. Work through the manifest systematically — every planned artifact must be addressed (completed or explicitly skipped with reason). Report progress as you go: "Writing API-PAYMENTS-GATEWAY (1/9 API artifacts)..."
 
 All Phase 1 artifacts are `status: "draft"`. Phase 2 can promote to `"active"` with user confirmation.
 
-**Parallelism:** Where possible, use the Agent tool to process multiple independent artifacts concurrently. For example, launch one agent per API- artifact or one agent per service's entity batch.
+**Parallelism — CRITICAL for time efficiency.** The 16 sub-steps are NOT all sequential. Execute in 5 parallel batches:
+
+| Batch | Sub-steps | What | Parallelism |
+|-------|-----------|------|-------------|
+| 1. Spec Layer | 3.1, 3.2 | API patterns + Schema docs | One agent per service |
+| 2. Entity Deep-Dive | 3.3, 3.15, 3.16 | Entity lifecycles + per-collection SCH- + field lineage | One agent per service |
+| 3. Service Signals | 3.4, 3.6, 3.10, 3.13 | Auth + error handling + risks + flow catalogs | One agent per service |
+| 4. Cross-Service | 3.5, 3.7, 3.8, 3.14 | FE/BE contracts + service pairs + entity comparisons + multi-app comparisons | One agent per pair |
+| 5. Synthesis | 3.9, 3.11, 3.12 | Patterns + DEC- + GLOSSARY- per service | One agent per category |
+
+Within each batch, launch one Agent per service (or per pair for Batch 4). Batches 1-3 can run concurrently since they read different aspects of the same code. Batch 4 depends on Batch 1-2 results (needs SCH- and GLOSSARY- artifacts). Batch 5 depends on all prior batches.
+
+**Minimum execution:** 3 sequential rounds (Batches 1-3 together, then 4, then 5), each internally parallel.
+
+**Read `references/scuba-phase1-substeps.md`** for full details on each sub-step. Summary of each:
 
 ### 3.1 — API pattern analysis
-
-For each service with an extracted OpenAPI spec in `sources/apis/{service}/{sub}/openapi.json`:
-
-1. Read the full spec.
-2. Analyze and document:
-   - **Surface profile**: path count, operation count, method split (GET/POST/PUT/PATCH/DELETE)
-   - **Auth posture**: count operations with vs without security requirements. "All N operations auth-gated" or "M of N operations have no auth requirement"
-   - **Non-CRUD action patterns**: scan for `:verb` suffix on path segments (e.g., `:finalize`, `:assign`, `:clone`). List them. Note: "these are workflow transitions, not plain resource mutations"
-   - **Batch operations**: scan for `batch` or `Batch` in paths or operationIds
-   - **Pagination convention**: scan for `page`/`page_size`/`limit`/`offset`/`cursor` on GET list endpoints
-   - **Error code patterns**: scan response schemas for common error codes. Note which are most prevalent
-   - **Contract limits**: what OpenAPI does NOT encode — business invariants, side effects, cross-entity invariants, idempotency semantics
-3. **Output:** Write an API- artifact per service/sub as a "delta layer on top of OpenAPI" — not a duplication of endpoint tables, but agent-relevant interpretation. Include a "How Agents Should Use This" section. Set `freshness_note: "scuba-depth API pattern analysis"`.
+Analyze OpenAPI specs → write API- artifacts as "delta layer on top of OpenAPI" with surface profile, auth posture, non-CRUD actions, pagination, and contract limits. **Must include `### Worked Example`** with realistic JSON request/response.
 
 ### 3.2 — Comprehensive schema documentation
-
-For each service with an extracted ERD in `sources/schemas/{service}/{sub}/schema.md`:
-
-1. Read the full schema.
-2. Document:
-   - **Tech stack**: explicitly state the database (PostgreSQL, MongoDB, Redis) and ORM/ODM (SQLAlchemy, Beanie, GORM, Prisma)
-   - **For RDB schemas**: full field tables with columns for Field, Type, Nullable, PK/FK, Index, Notes. Mermaid ERD diagram showing tables and FK relationships.
-   - **For document stores (MongoDB)**: document nesting structure, embedded vs referenced fields, index strategies. Mermaid diagram showing document relationships.
-   - **Entity descriptions**: what each table/collection represents, not just its fields
-   - **Relationship cardinalities**: one-to-one, one-to-many, many-to-many with join table names
-3. **Output:** Write or update SCH- artifacts per service/sub. Set `freshness_note: "scuba-depth schema documentation"`.
+Read extracted ERDs → write SCH- artifacts with field tables, entity descriptions, relationships. **Must include Mermaid `erDiagram`** (RDB) or `classDiagram` (document store). Max 15 entities per diagram.
 
 ### 3.3 — Entity definition and lifecycle artifacts
-
-Generate a PROC- artifact for every core entity listed in the manifest. Work through the manifest's PROC- entity list systematically. **Do not skip entities.**
-
-**Naming:** `PROC-{SERVICE}-{ENTITY}-LIFECYCLE` (e.g., `PROC-CDM-CASE-LIFECYCLE`, `PROC-CTL-JOB-LIFECYCLE`). The `-LIFECYCLE` suffix distinguishes entity artifacts from workflow or pattern PROC- artifacts.
-
-**Template:** Follow `/Users/jessi/Projects/seaof-ai/reef/references/templates/process-entity-lifecycle.md` exactly. It defines the full structure: Purpose, Key Facts, Definition (Fields table, Relationships, Creation), States (with Mermaid state diagram), and Related.
-
-For each core entity:
-
-1. **Read the source code** — find the model/schema definition file in the source repo. Read it to understand fields, relationships, validators, and business logic.
-2. **Write the PROC- artifact** following the template. Key requirements:
-   - **Fields table**: focus on business-meaningful fields, not a raw dump
+PROC- artifact for every core entity in manifest. **Naming:** `PROC-{SERVICE}-{ENTITY}-LIFECYCLE`. Template: `references/templates/process-entity-lifecycle.md`. **Must include Mermaid `stateDiagram-v2`** if status field exists, plus `## Agent Guidance` section. **Completeness check** against schema entity list after each service.
    - **Relationships**: reference other PROC-{SERVICE}-{ENTITY}-LIFECYCLE artifacts
-   - **States section with Mermaid `stateDiagram-v2`**: only if the entity has status/state fields. Search source code for where status is set/updated to map transitions.
-   - **Known unknowns**: generously flag gaps
-3. **Output:** Set `freshness_note: "scuba-depth entity definition + lifecycle from code scan"`.
-
-**Entity completeness check:** After generating all entity PROC- artifacts for a service, compare the list against the schema's entity list. If any core entity was skipped, go back and generate it. Common misses: entities in non-primary sub-apps, entities only referenced via FK but not directly queried, entities with short model files.
-
-**For junction/config tables** (entities that didn't pass the core entity filter): document them in the `## Relationships` section of their parent entity's PROC- artifact. Don't generate a separate artifact.
-
-**Parallelism:** Entity artifacts within the same service can share context (same schema, same source repo). Group by service and launch one agent per service batch.
-
 ### 3.4 — Auth boundary artifacts
-
-For each service, scan for authentication and authorization patterns:
-
-1. Search the source code for:
-   - JWT validation middleware or decorators
-   - Keycloak/Auth0/OAuth2 client configuration
-   - RBAC decorators, permission checks, policy engines
-   - Service account configuration (client credentials)
-   - API key validation
-   - Multiple auth paths coexisting (legacy vs new)
-2. For each service where auth patterns are found, document:
-   - **AuthN mechanism**: what it is and where in code (JWT, Keycloak, service accounts)
-   - **AuthZ enforcement**: how it works (RBAC middleware, decorators, policy engine)
-   - **Token flow**: how tokens move between frontend and backend (if detectable)
-   - **Service-to-service auth**: how backend services authenticate to each other
-   - If multiple auth paths coexist, document both with path selection logic
-3. **Output:** PROC- artifact per service for auth boundaries. Set `freshness_note: "scuba-depth auth boundary scan"`.
-
-If no auth patterns are found in a service, skip and note in the briefing.
+Scan for JWT, OAuth, RBAC, API keys, service accounts → write PROC- per service's auth pattern.
 
 ### 3.5 — FE/BE contract identification
-
-Scan frontend source repos (if present in project.json sources):
-
-1. Look for:
-   - Generated API clients: `openapi-generator`, `swagger-codegen`, `orval`, `openapi-typescript` in dependency files or generated file headers
-   - Shared type definitions: TypeScript interfaces/types that mirror backend schemas
-   - Auth flow code: silent SSO setup, token refresh logic, auth interceptors in HTTP clients
-   - API base URL configuration: environment variables pointing to backend services
-2. **Output:** CON- artifact documenting the FE/BE contract per service pair where both frontend and backend repos exist. If no frontend repos exist in the reef, skip entirely and note in the briefing.
+Scan frontend repos for generated API clients, shared types, auth flow → write CON- per FE/BE pair. Skip if no frontend repos.
 
 ### 3.6 — Error handling patterns per service
-
-For each service's source code:
-
-1. Search for:
-   - Global exception handlers or error middleware
-   - Retry decorators/wrappers (retry logic, exponential backoff)
-   - Timeout configurations (HTTP client timeouts, database connection timeouts, query timeouts)
-   - Circuit breaker patterns or libraries
-   - Dead letter queues or error queues
-2. **Output:** If meaningful patterns are found, write a PROC- or RISK- artifact per service documenting the error handling approach. If patterns are absent (no retry, no circuit breaker, no timeout configuration), that itself is a finding — note as a RISK- artifact or add to an existing service's `known_unknowns`.
+Scan for exception handlers, retry logic, timeouts, circuit breakers, dead-letter queues → write PROC- or RISK- per service.
 
 ### 3.7 — Service contracts (all pairs)
-
-Generate or update a CON- artifact for **every service pair** in the manifest. For N services, there are N×(N-1)/2 pairs — all must be covered. **Do not skip pairs.**
-
-**Naming:** `CON-{SERVICE-A}-{SERVICE-B}` (alphabetical order, e.g., `CON-CDM-CTL`, `CON-CDM-DAIP`).
-
-**Template:** Follow `/Users/jessi/Projects/seaof-ai/reef/references/templates/contract-service-pair.md` exactly. It defines the full structure: Parties, Key Facts, Integration Map (endpoint table per direction), Data Flow, Coupling Assessment table, Failure Behavior, and a "No Integration Detected" fallback section.
-
-For each service pair:
-
-1. Search both services' source code for evidence of interaction (HTTP clients, generated API clients, shared schemas, events, shared DB access).
-2. If interaction found: fill the Integration Map, Data Flow, Coupling Assessment, and Failure Behavior sections per the template.
-3. If NO interaction found: use the "No Integration Detected" section from the template. This confirms architectural separation.
-4. **Output:** CON- artifact per pair. Update existing ones if they exist from snorkel.
-
-**Completeness check:** After all contracts are written, count them. For N services, you must have exactly N×(N-1)/2 CON- artifacts. If any are missing, go back and generate them.
-
-After all pairs, add a summary heat map table to the briefing:
-
-```markdown
-| Source | Target | Call Sites | Shared Schemas | Generated Clients | Coupling |
-|--------|--------|------------|----------------|-------------------|----------|
-```
-
-For single-service reefs, skip this step.
+CON- artifact for **every** service pair (N×(N-1)/2). Template: `references/templates/contract-service-pair.md`. **Must include Mermaid `sequenceDiagram`** and `## Impact Analysis` for detected integrations. Use "No Integration Detected" section for pairs with no interaction. **Completeness check:** count must equal N×(N-1)/2.
 
 ### 3.8 — Cross-service entity comparison
-
-Check GLOSSARY- artifacts for terms flagged as ambiguous or used in multiple services:
-
-1. For each term that appears in SCH- artifacts from different services (e.g., "Order" in Payments and Fulfillment, "Product" in Catalog and Inventory, "User" in Auth and Billing):
-   - Pull the field lists from both SCH- artifacts
-   - Generate a side-by-side comparison table
-   - Flag semantic mismatches: same-name fields with different types, different storage (RDB vs document store), different lifecycle semantics
-2. **Output:** CON- artifact per entity comparison documenting:
-   - What the term means in each service
-   - Field-level comparison table
-   - High-risk ambiguities (where conflation could cause bugs or misunderstanding)
-   - Canonical writing rules: "Always prefix with service name when referring to {entity}"
-
-For single-service reefs, skip this step.
+For terms appearing in SCH- from different services → CON- with side-by-side field comparison, semantic mismatches, canonical writing rules. Skip for single-service reefs.
 
 ### 3.9 — Pattern and mechanism deepening
+Investigate named patterns from snorkel artifacts → PROC- or DEC- per pattern. Scuba depth = "what and why" (1-3 files). Flag anything requiring 5+ files for `/reef:deep`.
 
-Using the scuba-level signals collected during Step 2 (mining snorkel artifacts), investigate each one:
+### 3.10 — Per-service RISK- artifacts
+Scan for TODO/FIXME/HACK, bare exceptions, hardcoded credentials, missing error handling, skipped tests → RISK- per service. Template: `references/templates/risk-service.md`. Severity by density (10+=high, 5-9=medium, 1-4=low).
 
-1. For each named pattern or domain-specific mechanism found in snorkel artifacts' Key Facts or Core Concepts:
-   - Read the source code referenced by the artifact to understand the pattern at a conceptual level
-   - Document: what the pattern is, which entities/services use it, why it exists, what it enables, how it differs from the standard approach
-   - Example: if snorkel found "Soft-delete pattern: entities use is_deleted flag instead of hard delete" — read the model files to understand which entities use it, whether cascading deletes are handled, and why soft-delete was chosen over hard delete
-   - Example: if snorkel found "Hash-based deduplication using content_hash and source_hash" — document what's hashed, why multi-level hashing exists, what happens on collision, and how it relates to data integrity
-   - Example: if snorkel found "OrderSummaryMV is a materialized view" — document why it exists (read-heavy list endpoints), how it differs from a regular view (pre-computed, needs refresh), and what the staleness implications are
+### 3.11 — DEC- from observable patterns
+ADR format for each planned DEC-: Context (code evidence), Decision (specific), Consequences (observable), Rationale (if determinable, else `known_unknowns`).
 
-2. **Output:** PROC- or DEC- artifact per pattern/mechanism. Set `freshness_note: "scuba-depth pattern analysis"`. Focus on the "what and why" — leave "trace every line" for `/reef:deep`.
+### 3.12 — Per-service GLOSSARY- artifacts
+Extract domain terms from all artifacts for each service → GLOSSARY-{SERVICE}. Template: `references/templates/glossary-service.md`. Do NOT guess acronym expansions. Cross-reference with unified GLOSSARY-. Generate GLOSSARY-SOURCE-INDEX when all per-service glossaries are done.
 
-3. **Do not go deep.** If investigating a signal requires tracing more than 2-3 source files to understand, stop and flag it as a deep-level item. Add it to the deep-level signals list for the briefing. The heuristic:
-   - Scuba: "What is this pattern and why does it exist?" (conceptual, 1-3 files)
-   - Deep: "Show me every line of the implementation." (exhaustive, 5+ files, field-by-field)
+### 3.13 — PROC- flow catalogs
+Enumerate Prefect flows, Celery tasks, Airflow DAGs, background jobs → PROC-{SERVICE}-FLOW-CATALOG. Template: `references/templates/process-flow-catalog.md`. Include Mermaid `graph` of flow dependencies. Skip if no pipelines.
+
+### 3.14 — PROC- multi-app comparison pairs
+Detect mirrored implementations across sub-apps → document shared vs different with side-by-side tables. Skip for single-app services.
+
+### 3.15 — SCH- per-collection (document stores)
+One SCH- per MongoDB collection (3+ collections): fields, embedded vs referenced, indexes, Mermaid nesting diagram.
+
+### 3.16 — SCH- field lineage
+Trace non-trivial field origins (API input, external system, computed, copied, system-generated) → lineage table + Mermaid `flowchart`. Skip for simple CRUD entities.
 
 ---
 
 ## Step 4 — Phase 1 Briefing
 
-After all sub-steps, read `.reef/scuba-manifest.json` and present a manifest-based summary:
+After all sub-steps, read `.reef/scuba-manifest.json` and present a manifest-based summary covering:
 
-```
-Phase 1 complete.
-
-Manifest: N/M planned artifacts completed, K skipped.
-
-  API-  artifacts:  N/M completed
-  SCH-  artifacts:  N/M completed
-  PROC- entities:   N/M completed
-  CON-  contracts:  N/M completed
-  PROC- auth:       N/M completed
-  PROC-/DEC-:       N/M completed
-
-Skipped (with reasons):
-- {ID}: {reason}
-
-Key findings:
-- {Service} has N action-style endpoints (workflow transitions, not plain CRUD)
-- {Entity} has a status field with M states but only K transitions traceable in code
-- {Service-A} → {Service-B} has the heaviest coupling (N call sites)
-- ...
-
-Could not resolve from code alone (Phase 2 candidates):
-- What triggers the {state} → {state} transition for {entity}?
-- Is the naming overlap between {service-A}.{entity} and {service-B}.{entity} intentional?
-- What is the production behavior for {timeout/retry} pattern?
-- ...
-
-Flagged for /reef:deep (too detailed for scuba):
-- Field-by-field lineage of {entity} (hash computation, transformation chain)
-- Exact refresh logic for {materialized view}
-- Line-by-line execution path for {critical flow}
-- ...
-```
+1. **Manifest completion** — N/M completed, K skipped (per category: API-, SCH-, PROC-, CON-, RISK-, DEC-, GLOSSARY-)
+2. **Skipped artifacts** with reasons
+3. **Key findings** — notable patterns, heaviest couplings, complex lifecycles
+4. **Phase 2 candidates** — questions code alone cannot answer (state transitions, naming overlaps, production behavior)
+5. **Deep-dive flags** — items too detailed for scuba (field-by-field lineage, line-by-line execution paths)
 
 Then:
 
@@ -406,10 +320,10 @@ Then:
 3. **Add unresolved items** to `.reef/questions.json` with `"phase": "scuba"` and `"status": "unanswered"`.
 4. **Run post-write commands** for all artifacts created:
    ```bash
-   python3 /Users/jessi/Projects/seaof-ai/reef/scripts/reef.py rebuild-index --reef <reef-root>
-   python3 /Users/jessi/Projects/seaof-ai/reef/scripts/reef.py rebuild-map --reef <reef-root>
-   python3 /Users/jessi/Projects/seaof-ai/reef/scripts/reef.py lint --reef <reef-root>
-   python3 /Users/jessi/Projects/seaof-ai/reef/scripts/reef.py log "Scuba Phase 1: generated N artifacts" --reef <reef-root>
+   python3 ${CLAUDE_PLUGIN_ROOT}/scripts/reef.py rebuild-index --reef <reef-root>
+   python3 ${CLAUDE_PLUGIN_ROOT}/scripts/reef.py rebuild-map --reef <reef-root>
+   python3 ${CLAUDE_PLUGIN_ROOT}/scripts/reef.py lint --reef <reef-root>
+   python3 ${CLAUDE_PLUGIN_ROOT}/scripts/reef.py log "Scuba Phase 1: generated N artifacts" --reef <reef-root>
    ```
 5. **Render health report** using the same Unicode box-drawing format as snorkel Step 7. This gives the user an immediate visual sense of how much richer the reef got from Phase 1.
 
@@ -521,43 +435,7 @@ Prioritize unanswered questions from `.reef/questions.json`.
 
 ### 5.4 — Artifact creation
 
-When creating or updating an artifact, follow the full artifact contract.
-
-**Frontmatter field order** (all fields required, in this order):
-
-```yaml
-id:
-type:
-title:
-domain:
-status:
-last_verified:
-freshness_note:
-freshness_triggers:
-known_unknowns:
-tags:
-aliases:
-relates_to:
-sources:
-notes:
-```
-
-**Body requirements:**
-
-- Include all required body sections for the artifact type (per the contract).
-- Key Facts section with source citations using `→` syntax.
-- `## Related` section with wikilinks that match `relates_to` in frontmatter.
-
-**Determinism rules** (for reproducible diffs):
-
-- `relates_to` sorted alphabetically by target.
-- `sources` sorted alphabetically by ref.
-- `freshness_triggers` sorted alphabetically.
-
-**Validation** — same blocking and warning checks as `/reef:artifact`:
-
-- Blocking: YAML parseable, all required fields present, `id` matches filename, valid enums, non-empty `freshness_note`, Key Facts present (except Glossary).
-- Warning: `relates_to` targets resolve, `sources` resolve, required body sections present, wikilinks match frontmatter.
+**Read `references/artifact-contract.md`** for frontmatter field order, body requirements, determinism rules, and validation checks. All rules apply.
 
 **Glossary cross-check:** Before writing, compare domain terms against GLOSSARY- artifacts. Fix drift or ambiguity.
 
@@ -568,10 +446,10 @@ Status can be "draft" (Phase 1 or uncertain) or "active" (user-confirmed in Phas
 Run these in order after each artifact file is written and accepted:
 
 ```bash
-python3 /Users/jessi/Projects/seaof-ai/reef/scripts/reef.py snapshot <artifact-id> --reef <reef-root>
-python3 /Users/jessi/Projects/seaof-ai/reef/scripts/reef.py rebuild-index --reef <reef-root>
-python3 /Users/jessi/Projects/seaof-ai/reef/scripts/reef.py rebuild-map --reef <reef-root>
-python3 /Users/jessi/Projects/seaof-ai/reef/scripts/reef.py log "Created <artifact-id>" --reef <reef-root>
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/reef.py snapshot <artifact-id> --reef <reef-root>
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/reef.py rebuild-index --reef <reef-root>
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/reef.py rebuild-map --reef <reef-root>
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/reef.py log "Created <artifact-id>" --reef <reef-root>
 ```
 
 Use "Updated" instead of "Created" in the log message when updating an existing artifact.

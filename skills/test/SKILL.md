@@ -14,8 +14,8 @@ This is the accountability skill. Reef can generate beautiful artifacts all day,
 
 Before doing anything else, read these reference files:
 
-1. `/Users/jessi/Projects/seaof-ai/reef/references/methodology.md` — voice, personality, and the core principle that drives this skill.
-2. `/Users/jessi/Projects/seaof-ai/reef/references/artifact-contract.md` — you need to understand artifact structure to evaluate whether answers are sourced.
+1. `${CLAUDE_PLUGIN_ROOT}/references/methodology.md` — voice, personality, and the core principle that drives this skill.
+2. `${CLAUDE_PLUGIN_ROOT}/references/artifact-contract.md` — you need to understand artifact structure to evaluate whether answers are sourced.
 
 ---
 
@@ -137,7 +137,7 @@ If the user picks a gap, hand off to the appropriate skill. If not, end the sess
 
 Run:
 ```bash
-python3 /Users/jessi/Projects/seaof-ai/reef/scripts/reef.py log "Test pass: {answered}/{total} answered, {partial} partial, {unanswered} gaps" --reef <reef-root>
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/reef.py log "Test pass: {answered}/{total} answered, {partial} partial, {unanswered} gaps" --reef <reef-root>
 ```
 
 ---
@@ -159,12 +159,12 @@ Curious Researcher. Honest assessment — the purpose of this skill is to find g
 - **No reef found**: "No reef found in this directory. Run `/reef:init` first to set one up."
 - **No questions and user declines to seed**: "Without questions, there is nothing to test. You can seed questions anytime by running `/reef:test` again or by editing `.reef/questions.json` directly."
 - **No artifacts exist**: "This reef has no artifacts yet. Run `/reef:snorkel` to generate some drafts, then come back and test."
-- **`reef.py` not found**: check that `/Users/jessi/Projects/seaof-ai/reef/scripts/reef.py` exists. If not, tell the user the plugin may not be fully installed.
+- **`reef.py` not found**: check that `${CLAUDE_PLUGIN_ROOT}/scripts/reef.py` exists. If not, tell the user the plugin may not be fully installed.
 
 ---
 
 ## Important
 
-- Always use `/Users/jessi/Projects/seaof-ai/reef` to reference the plugin's own files. Never hardcode paths to the plugin directory.
+- Always use `${CLAUDE_PLUGIN_ROOT}` to reference the plugin's own files. Never hardcode paths to the plugin directory.
 - This skill reads artifacts only. It must not read source code to answer questions. If the answer requires source code, the reef has a gap — that is the finding.
 - The question bank is the north star. Everything this skill does serves those questions.
