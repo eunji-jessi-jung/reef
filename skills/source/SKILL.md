@@ -160,6 +160,79 @@ Tech stacks detected:
 
 ---
 
+## Step 1.5 — Scaffold output directories and pre-flight checks
+
+**Scaffold first.** Before any extraction, create the full directory structure for every service/app detected in Step 1. This serves two purposes: (a) extraction has somewhere to write, and (b) if extraction fails, the user knows exactly where to place files manually.
+
+```bash
+# For each service/app:
+mkdir -p <reef-root>/sources/apis/{service}/{sub}
+mkdir -p <reef-root>/sources/schemas/{service}/{sub}
+```
+
+For single-app repos (no sub-applications), omit the sub-directory.
+
+**Pre-flight checks.** Before attempting runtime extraction, quickly check what tools and environments are available. This prevents burning 5 attempts on a fundamentally broken setup.
+
+For each repo/app:
+
+1. **Check venv health.** If a `.venv/` or `venv/` exists, test if the Python binary resolves:
+   ```bash
+   .venv/bin/python --version 2>/dev/null
+   ```
+   - If it resolves: venv is healthy, use it.
+   - If it fails (broken symlink, wrong machine): mark as "broken venv". Check if `uv` is available to fix it (see below).
+   - If no venv exists: check for package manager (poetry/uv) that can create one.
+
+2. **Check tool availability.** Record what's available on this machine:
+   - `poetry --version` / `python3 -m poetry --version`
+   - `uv --version` / `python3 -m uv --version`
+   - `go version` (for Go repos)
+   - `swag --version` (for Go API extraction)
+   - `node --version` / `npx --version` (for Node repos)
+
+3. **Early skip decision.** If runtime extraction is structurally impossible for a repo, skip straight to tier 3/4 without burning attempts:
+   - Go repo but no `go` or `swag` installed → skip to tier 3
+   - Java/Kotlin repo but no JVM → skip to tier 3
+   - Broken venv AND no `uv` or `poetry` to fix it → skip to tier 3
+   - Report: "Skipping runtime extraction for daip/authz — Go project but `swag` is not installed on this machine."
+
+4. **Fix broken venvs (if tools available).** If a venv is broken and `uv` is available:
+   ```bash
+   # uv available as command:
+   cd <app-dir> && uv venv --python 3.13 --clear
+   uv pip install --python .venv/bin/python -r <(python3 -c "
+   import re
+   with open('poetry.lock') as f:
+       content = f.read()
+   pkgs = re.findall(r'\[\[package\]\]\nname = \"(.+?)\"\nversion = \"(.+?)\"', content)
+   for name, ver in pkgs:
+       if name not in ('private-pkg-1', 'private-pkg-2'):  # skip private packages
+           print(f'{name}=={ver}')
+   ")
+
+   # uv available only as module:
+   python3 -m uv venv --python 3.13 --clear
+   python3 -m uv pip install --python .venv/bin/python <packages>
+   ```
+   **Important:** Skip private/internal packages during pip install — they'll be handled by stubs. To identify private packages, look for packages that fail to resolve from PyPI or that reference internal registries in `pyproject.toml`.
+
+Report the pre-flight results:
+
+```
+Pre-flight checks:
+
+| Service | App              | Venv    | Pkg Mgr         | Runtime possible? |
+|---------|------------------|---------|-----------------|-------------------|
+| CDM     | breast           | broken  | uv (as module)  | yes (after fix)   |
+| CDM     | chest            | broken  | uv (as module)  | yes (after fix)   |
+| CTL     | data-server      | healthy | poetry          | yes               |
+| DAIP    | authz            | n/a     | go (missing)    | no — skip to t3   |
+| DAIP    | data-lineage     | n/a     | n/a (Marquez)   | no — skip to t3   |
+```
+
+---
+
 ## Step 2 — Extract API specs (tiered)
 
 For each repo/app where an API framework was detected, follow the tiers in order. Stop at the first success.
@@ -167,6 +240,16 @@ For each repo/app where an API framework was detected, follow the tiers in order
 **All tiers must produce `openapi.json`** — valid OpenAPI 3.x JSON format. No markdown, no YAML. If the source is YAML or Swagger 2.x, convert to OpenAPI 3.x JSON.
 
 **Design principle: live truth over speed.** A stale spec that gets one endpoint wrong destroys trust with engineers. Runtime extraction from today's code is always preferred over copying a file that may have been generated months ago.
+
+### Tier 0 — User-provided spec
+
+Check if the user has already placed a file at `sources/apis/{service}/{sub}/openapi.json`. If it exists and was NOT written by a previous extraction run (check `openapi.meta.json` — if missing or `extraction_method` is `"user-provided"`), treat it as authoritative. The user knows their system better than any extraction tool.
+
+Write or update `openapi.meta.json` with `"extraction_tier": 0, "extraction_method": "user-provided"`.
+
+Report: "Using user-provided spec for daip/authz."
+
+**Move to the next repo/app.** Do not attempt further tiers.
 
 ### Tier 1 — Cached recipe replay
 
@@ -418,6 +501,10 @@ Report: "Runtime extraction failed for ctl-data-server (missing MongoDB connecti
 
 For each repo/app where an ORM/ODM was detected, follow the tiers in order.
 
+### Tier 0 — User-provided schema
+
+Same as API tier 0. If `sources/schemas/{service}/{sub}/schema.md` exists and was placed by the user (no meta file or meta says `"user-provided"`), treat it as authoritative.
+
 ### Tier 1 — Cached recipe replay
 
 Same as API tier 1. If a cached ERD recipe exists, replay it.
@@ -553,27 +640,52 @@ python3 ${CLAUDE_PLUGIN_ROOT}/scripts/reef.py log "Source extraction: N API spec
 
 **Do not run `reef.py index` or `rebuild-index` or `rebuild-map` here.** Source only writes to `sources/` and `.reef/source-recipes.json` — it does not create artifacts. Re-indexing is handled by snorkel (if running in parallel) or by the next skill that runs (scuba, update, etc.). This avoids race conditions with snorkel's reef.py calls.
 
-Report what was generated:
+Report what was generated, split into two sections — live truth and gaps:
 
 ```
-Source extraction complete:
+Source extraction complete.
 
-| Service | App              | API                  | ERD                  |
-|---------|------------------|----------------------|----------------------|
-| CDM     | breast           | tier 2 (runtime)     | tier 2 (Alembic)     |
-| CDM     | chest            | tier 2 (runtime)     | tier 2 (Alembic)     |
-| CTL     | —                | tier 2 (runtime)     | tier 3 (Beanie models)|
-| DAIP    | authz            | tier 2 (runtime/swag)| tier 2 (migrations)  |
-| RDP     | prefect-gateway  | tier 2 (runtime)     | —                    |
+Live truth (runtime-extracted from today's code):
+
+| Service | App              | API          | ERD              |
+|---------|------------------|--------------|------------------|
+| CDM     | breast           | 70 endpoints | 30 tables        |
+| CDM     | chest            | 63 endpoints | 28 tables        |
+| CDM     | manufacturer     | 10 endpoints | 4 tables         |
+| CDM     | inference-result | 8 endpoints  | 3 collections    |
+| CTL     | authenticator    | 8 endpoints  | 1 collection     |
+| CTL     | data-server      | 87 endpoints | 7 collections    |
+| RDP     | prefect-gateway  | 6 endpoints  | —                |
+
+Not live truth (may be outdated):
+
+| Service | App           | API                              | ERD              | Why                        |
+|---------|---------------|----------------------------------|------------------|----------------------------|
+| DAIP    | authz         | 66 endpoints (8 months stale)    | 16 tables (migr) | Go — no swag on machine    |
+| DAIP    | data-lineage  | 28 endpoints (unknown freshness) | —                | Marquez fork, non-standard |
 
 Recipes cached to .reef/source-recipes.json for future runs.
 ```
 
+**For specs that are not live truth**, tell the user they can provide their own:
+
+```
+Two specs could not be runtime-extracted and may be outdated.
+You can replace them with up-to-date versions:
+
+  sources/apis/daip/authz/openapi.json      — place a valid OpenAPI 3.x JSON file here
+  sources/apis/daip/data-lineage/openapi.json — place a valid OpenAPI 3.x JSON file here
+
+The directory structure is already in place. Drop in your files and
+run /reef:source again — it will detect them as user-provided (tier 0)
+and skip extraction for those.
+```
+
 Then suggest next step:
 
-"API specs and ERDs are now in `sources/apis/` and `sources/schemas/`. The reef has the full picture of your services' APIs and data models.
+"API specs and ERDs are now in `sources/apis/` and `sources/schemas/`.
 
-- `/reef:scuba` — deepen the draft artifacts using these specs. This is where the real knowledge gets built."
+- `/reef:scuba` — deepen the draft artifacts using these specs."
 
 ---
 
@@ -617,8 +729,12 @@ This means first runs are slow (discovery + stubbing), but repeat runs are fast 
 - **Never modify source repos.** Stubs go in temp directories. Output goes in the reef's `sources/`.
 - **API specs are always `openapi.json`.** Valid OpenAPI 3.x JSON format, regardless of extraction tier.
 - **Use service groupings for directory structure.** Map repos to services using `project.json`.
+- **Scaffold directories before extraction.** Create all output directories upfront so users know where to place manual specs even if extraction fails.
+- **No hard dependencies.** The skill should work with whatever tools are on the machine. If `uv` is missing, try `poetry`. If `poetry` is missing, try bare `python3`. If `go` is missing, skip to tier 3. Never fail because a tool isn't installed — degrade gracefully and tell the user what would help.
+- **Fail fast on broken environments.** Check venv health and tool availability before attempting extraction. Do not burn 5 attempts when the first one is guaranteed to fail.
 - **5 attempts max for runtime extraction.** Be smarter about stubbing (read the error, stub specifically), but do not enter an endless debugging spiral. Fall back gracefully.
-- **Cache what works.** Repeat runs should be fast.
-- **Transparency over silence.** Report which tier succeeded for each repo. If a tier failed, say why briefly.
+- **User-provided specs are tier 0.** If the user places a file in the right location, trust it unconditionally. They know their system.
+- **Cache what works.** Repeat runs should be fast. Only cache runtime recipes — never static file copies.
+- **Transparency over silence.** Split the report into "live truth" and "not live truth". If a spec is stale, say so explicitly and tell the user where to place an updated version.
 - **Completeness matters.** List ALL endpoints, ALL tables, ALL fields. This is reference material for scuba and deep.
 - **Write meta files.** Every `openapi.json` gets an `openapi.meta.json` so downstream consumers know the provenance.
