@@ -1192,21 +1192,65 @@ def _extract_entities_from_schema(schema_path: Path) -> list[dict]:
                     raw_entities[current_entity]["has_status"] = True
 
     # --- Also try ## Tables / ## Collections heading format (fallback) ---
+    # Parses markdown tables under ### headings to extract fields, FKs, and status.
     in_tables = False
-    current_heading = None
+    current_entity_name = None
+    in_column_table = False
     for line in text.split("\n"):
         stripped = line.strip()
         if stripped.startswith("## Tables") or stripped.startswith("## Collections"):
             in_tables = True
+            current_entity_name = None
+            in_column_table = False
             continue
         if stripped.startswith("## ") and in_tables:
             in_tables = False
+            current_entity_name = None
+            in_column_table = False
             continue
-        if in_tables and stripped.startswith("### "):
+        if not in_tables:
+            continue
+        if stripped.startswith("### "):
             raw_name = stripped[4:].strip().split("(")[0].strip().split(" / ")[0].strip()
             name_lower = raw_name.lower().replace(" ", "_")
+            current_entity_name = None
+            in_column_table = False
+            # Only add if not already parsed from Mermaid
             if name_lower not in {k.lower() for k in raw_entities}:
                 raw_entities[raw_name] = {"fields": [], "fks": [], "has_status": False}
+                current_entity_name = raw_name
+            continue
+        if current_entity_name is None:
+            continue
+        # Detect markdown table header row: | Column | Type | Constraints |
+        if stripped.startswith("|") and not in_column_table:
+            headers = [h.strip().lower() for h in stripped.split("|")]
+            if any(h in ("column", "field", "name") for h in headers):
+                in_column_table = True
+            continue
+        # Skip separator row: |--------|------|-------------|
+        if in_column_table and stripped.startswith("|") and set(stripped.replace("|", "").strip()) <= {"-", " "}:
+            continue
+        # Parse data rows: | column_name | TYPE | constraints |
+        if in_column_table and stripped.startswith("|"):
+            cells = [c.strip() for c in stripped.split("|")]
+            # Remove empty first/last from leading/trailing |
+            cells = [c for c in cells if c]
+            if len(cells) >= 2:
+                field_name = cells[0]
+                constraints_str = " ".join(cells[2:]).upper() if len(cells) >= 3 else ""
+                ent = raw_entities[current_entity_name]
+                # Skip system fields for counting later, but still record them
+                ent["fields"].append(field_name)
+                if "FK" in constraints_str or field_name.endswith("_id"):
+                    ent["fks"].append(field_name)
+                if field_name.lower() in ("status", "state", "current_run_state",
+                                          "current_state", "workflow_state"):
+                    ent["has_status"] = True
+            continue
+        # Non-table line after table started means table ended
+        if in_column_table and not stripped.startswith("|"):
+            in_column_table = False
 
     # --- Classify into tiers ---
     SYSTEM_FIELDS = {"id", "_id", "created_at", "updated_at", "deleted_at"}
