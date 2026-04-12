@@ -21,6 +21,21 @@ Curious Researcher. Present-participle narration. No emojis. No exclamation mark
 
 ## Procedure
 
+### 0. Pipeline stage gate
+
+Check if `.reef/scuba-manifest.json` exists and has at least one `completed` entry. If not, the reef hasn't been through scuba yet — updating it now will produce unpredictable results (re-indexing may invalidate snorkel artifacts that haven't been deepened yet).
+
+```
+This reef hasn't completed scuba yet. Running update before scuba
+can destabilize the artifact graph — snorkel artifacts may be
+overwritten or orphaned before they've been deepened.
+
+Recommended: run /reef:scuba first, then /reef:update.
+Continue anyway? (not recommended)
+```
+
+If the user insists, proceed with a warning. But the default is to block.
+
 ### 1. Locate the reef
 
 Find the `.reef/` directory in cwd or parents. Read `project.json` from the reef root.

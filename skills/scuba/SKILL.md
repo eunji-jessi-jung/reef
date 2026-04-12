@@ -18,7 +18,9 @@ You MUST complete these steps IN ORDER. Do NOT skip any. Do NOT jump ahead.
 4. **Automated Deepening** (Step 3) — work through the manifest, NO user input needed
 5. **Briefing** (Step 4) — present manifest completion status, coverage gaps, next steps
 
-**CRITICAL: Automated deepening ALWAYS runs first.** Even if the user says "let's answer the questions" or "go through all of them" — this means: run the automated pass first, THEN present findings in the briefing. The user's first interaction point is the briefing (Step 4), not before. Do NOT ask the user questions until automated deepening is complete.
+**CRITICAL: Automated deepening ALWAYS runs first.** Even if the user says "let's answer the questions" or "go through all of them" — this means: run the automated pass first, THEN present findings in the briefing. Do NOT ask the user questions until automated deepening is complete.
+
+**EQUALLY CRITICAL: Human review checkpoints exist between batch rounds.** After each sequential round (Batch 0, Batches 1-3, Batches 4a-4c, Batches 5a-5b), pause and show the user 2-3 sample artifacts from that round. The user can flag factual errors, add context, or request re-generation before the next round builds on potentially flawed foundations. These checkpoints are NOT optional — skipping them to "save time" is how quality regressions happen. A 2-minute review between rounds catches errors that a post-hoc briefing cannot.
 
 ---
 
@@ -139,15 +141,13 @@ The script handles the bulk of manifest generation, but you MUST verify its outp
 
 **If you add items, append them to the manifest's `planned` array and re-save `.reef/scuba-manifest.json`.**
 
-### Minimum manifest size gate
+### Manifest scope check
 
-Before presenting the manifest to the user, check the total against this formula:
+Present the manifest to the user with counts by type. There is no minimum — a focused manifest of 20 high-quality artifacts is better than a bloated manifest of 60 skeletal ones.
 
-```
-minimum = (services × 6) + (services × (services-1) / 2) + (PAT candidates from glossary)
-```
+If the manifest seems large (50+ items), **proactively suggest narrowing scope**: "This manifest has {N} items. Want to focus on a subset — e.g., just the core entities and their lifecycles — and go deep on those first? We can always expand later."
 
-For a 4-service reef with 5 glossary disambiguation terms, the minimum is ~34. If the actual manifest total is below this minimum, **do not present it** — investigate what the script missed and augment first. A thin manifest produces a thin reef, and the user will rightfully be frustrated.
+The user controls the scope. The pipeline's job is to produce correct, useful artifacts — not to hit a number.
 
 **ANTI-CONSOLIDATION RULES (CRITICAL):**
 
@@ -155,7 +155,7 @@ For a 4-service reef with 5 glossary disambiguation terms, the minimum is ~34. I
 2. Never merge comparison artifacts into entity artifacts — both must exist.
 3. Never merge flow PROC- into a flow catalog — catalog is an index, flows are detail.
 4. Never consolidate CON- artifacts — each pair is separate.
-5. Never remove a planned artifact because "it's covered by" another. Overlap is fine. Missing is not.
+5. Never remove a planned artifact because "it's covered by" another. But skipping for insufficient quality is fine — a gap the user can fill later is better than incorrect content.
 
 ### Confirm before executing
 
@@ -179,7 +179,11 @@ No user input after confirmation. Work through the manifest systematically — e
 
 All artifacts are `status: "draft"`. Interactive mode can promote to `"active"` with user confirmation.
 
-**CRITICAL — DO NOT CONSOLIDATE, MERGE, OR SKIP PLANNED ARTIFACTS.** If the manifest says to produce PROC-PAYMENTS-ORDER-LIFECYCLE and PROC-PAYMENTS-INVOICE-LIFECYCLE, you produce TWO separate artifacts — not one combined "entity overview." If you cannot find enough content for an artifact, write it thin (minimum Key Facts + known_unknowns listing what you couldn't determine). A thin artifact is infinitely better than a missing one. The manifest is the contract — every item in `planned` must appear in either `completed` or `skipped` (with an explicit reason). "Covered by another artifact" is NOT a valid skip reason.
+**DO NOT CONSOLIDATE OR MERGE PLANNED ARTIFACTS.** If the manifest says to produce PROC-PAYMENTS-ORDER-LIFECYCLE and PROC-PAYMENTS-INVOICE-LIFECYCLE, you produce TWO separate artifacts — not one combined "entity overview."
+
+**QUALITY OVER QUANTITY.** If you cannot find enough content for an artifact to meet the minimum depth bar (Key Facts, sources, freshness_triggers, relates_to — all required), **skip it with reason** rather than writing a skeletal stub. A missing artifact can be added later when there's enough information; a wrong artifact erodes trust and is harder to fix than to create from scratch. Mark it as `skipped` with the reason "insufficient source material for minimum quality" in the manifest.
+
+**"Covered by another artifact" is still NOT a valid skip reason.** Each planned artifact addresses a distinct topic. But "I read the source code and there isn't enough here to write 6 accurate Key Facts" IS a valid skip reason.
 
 **MANDATORY AGENT PROMPT PREAMBLE — include in EVERY agent prompt for Phase 1 batches:**
 
@@ -188,13 +192,13 @@ When launching agents for any Phase 1 batch (Batch 0-7), you MUST prepend this p
 > "RULES — read before writing any artifact:
 > 1. Each manifest item = one separate artifact file. Never combine multiple items into one.
 > 2. Never merge entity lifecycles — PROC-PAYMENTS-ORDER-LIFECYCLE and PROC-PAYMENTS-INVOICE-LIFECYCLE are TWO files, not one overview.
-> 3. Never skip an item because another artifact covers similar ground. Overlap is fine. Missing is not.
-> 4. If content is thin, write it thin: minimum Key Facts + known_unknowns. Thin > missing.
-> 5. Your output must contain exactly as many artifact files as manifest items assigned to you. List every artifact ID you were assigned and confirm each one was written.
+> 3. Never skip an item because another artifact covers similar ground. Overlap is fine.
+> 4. QUALITY OVER QUANTITY. If you cannot find enough source material to write at least 6 accurate, source-cited Key Facts for an artifact, skip it with reason 'insufficient source material.' A skipped artifact is better than an incorrect one. Do NOT pad thin artifacts with unverified claims.
+> 5. Every artifact you write MUST have: non-empty `sources` (list the files you read), non-empty `freshness_triggers` (file globs that would invalidate this artifact), at least 1 `relates_to` entry. An artifact missing any of these is incomplete — do not submit it.
 > 6. DEPTH: Read at least 3 source files per artifact. Every Key Fact must cite a specific file path with `→`. Target 10-15 Key Facts, not just the minimum. If the artifact updates an existing one, read its known_unknowns first and resolve as many as you can.
 > 7. When you finish, output a completion report listing every assigned artifact ID and its status (written / skipped with reason). This is mandatory — do not end without it."
 
-This preamble exists because Phase 1 agents do not see the full skill text. Without it, agents consolidate planned artifacts into fewer, broader docs — the #1 failure mode in previous iterations.
+This preamble exists because Phase 1 agents do not see the full skill text. Without it, agents consolidate planned artifacts into fewer, broader docs — the #1 failure mode in previous iterations. Rules 4-5 were added after dogfooding showed that forcing agents to write thin artifacts produced incorrect, skeletal output that degraded overall quality.
 
 **DO NOT delegate manifest tracking to agents.** Agents write artifacts and report what they wrote. The orchestrator (you) owns the manifest. See "Orchestrator-owned manifest tracking" below.
 
@@ -224,12 +228,32 @@ Parse the JSON output, filter to errors for this artifact's ID. If errors are fo
 After all agents in a batch return, before starting the next batch:
 
 1. Count: `assigned` (items given to agents in this batch), `written` (verified on disk), `skipped` (with reason), `dropped` (unaccounted for).
-2. **If `dropped > 0`:** Re-launch agents for the dropped items. Include the original preamble plus: "These items were assigned to a previous agent that failed to produce them. You MUST write each one. There are only {N} items — do not stop until all {N} are written."
-3. **If after retry `dropped` is still > 0:** Write them yourself (the orchestrator). A thin artifact with minimum Key Facts is acceptable. Zero is not.
+2. **If `dropped > 0`:** Re-launch agents for the dropped items once. Include the original preamble plus: "These items were assigned to a previous agent that failed to produce them. Write each one if you can find enough source material for minimum quality. If not, skip with reason."
+3. **If after retry `dropped` is still > 0:** Mark them as `skipped` with reason "agent could not produce — deferred to interactive review." Do NOT write thin stubs yourself. These items will be surfaced in the briefing as candidates for human-guided deepening, where the user's domain context can fill what code reading couldn't.
 4. Re-verify: `completed + skipped` for this batch must equal `assigned`. Only then proceed.
-5. Log: "Batch {N} complete: {written} written, {skipped} skipped, {dropped} recovered."
+5. Log: "Batch {N} complete: {written} written, {skipped} skipped, {dropped} deferred."
 
 **Invariant check:** After every batch, verify `completed.length + skipped.length + planned.length` equals the original manifest total. If not, items are being lost — stop and investigate before continuing.
+
+### Human review checkpoint (MANDATORY between batch rounds)
+
+After each sequential round completes (Batch 0 → Batches 1-3 → Batches 4a-4c → Batches 5a-5b), pause for human review before starting the next round:
+
+1. **Pick 2-3 artifacts from the round** — choose the most complex ones (highest relates_to count, largest entities, cross-service artifacts).
+2. **Show the user a concise summary** of each: title, Key Facts count, known_unknowns, and 3-4 of the most important Key Facts verbatim.
+3. **Ask explicitly:**
+   ```
+   Round {N} produced {M} artifacts. Here are samples:
+
+     {artifact summaries}
+
+   Anything look wrong or missing? Any domain context I should know
+   before the next round? (If all good, say "continue")
+   ```
+4. **If the user flags errors:** Fix them now. If the error suggests a systemic issue (e.g., wrong assumption about a service), propagate the fix to other artifacts in the round before proceeding.
+5. **If the user adds context:** Note it and apply to remaining rounds. This is exactly the kind of domain knowledge that code reading alone misses.
+
+This checkpoint exists because dogfooding showed that fully automated Phase 1 without any human input produced artifacts with factual errors that compounded across batches. A 2-minute review between rounds is the highest-ROI quality intervention in the pipeline.
 
 ### Minimum depth validation per artifact
 
@@ -250,6 +274,15 @@ After writing each artifact, validate it against the minimum depth bar for its t
 | GLOSSARY- | N/A | N/A | Overview, Terms table, Related | — |
 
 An artifact that does not meet its minimum Key Facts count is **not complete**. Read additional source files to find more verifiable claims before marking it done.
+
+**Structural completeness is also blocking.** An artifact missing ANY of these fields is not complete — do NOT mark it done or proceed:
+
+- `sources`: Must list at least 1 source file path. Empty `sources: []` is a failure — every artifact comes from reading specific files. If you read files to write the artifact, list them.
+- `freshness_triggers`: Must list at least 1 file glob. These are the files that, if changed, would make this artifact stale. If you don't know what would invalidate this artifact, you don't understand it well enough to write it.
+- `known_unknowns`: Must be present (can be empty `[]` only if you genuinely have no open questions — but be honest). Artifacts generated from catalog breakout especially tend to have gaps; acknowledge them.
+- `relates_to`: Must list at least 1 related artifact. No artifact exists in isolation.
+
+These requirements apply equally to individually-planned artifacts and catalog-breakout artifacts. Breakout artifacts are NOT exempt from quality standards.
 
 **Known-unknowns resolution (for updates):** When updating an existing artifact, read its `known_unknowns` list first. For each item, attempt to resolve it by reading the relevant source code. Resolved items become Key Facts (with `→ source`). Unresolvable items stay in `known_unknowns`. This is the single highest-ROI quality action — the gaps are already identified.
 
@@ -331,7 +364,7 @@ Present a manifest-based summary covering:
 2. **Skipped artifacts** with reasons
 3. **Key findings** — notable patterns, heaviest couplings, complex lifecycles
 
-### PROC count gate (MANDATORY — prevents process collapse)
+### PROC count check (informational — not a gate)
 
 Before presenting results, count actual PROC- artifacts in `artifacts/processes/`. Compare against the manifest:
 
@@ -339,18 +372,16 @@ Before presenting results, count actual PROC- artifacts in `artifacts/processes/
 PROC- artifact check:
   Manifest planned:     {N} PROC- artifacts
   Actually produced:    {M} PROC- artifacts
+  Skipped (quality):    {S} PROC- artifacts
   Tier 1 entities:      {T1} (from manifest entity_tiering)
   Tier 1 coverage:      {M_entity}/{T1} ({%})
 ```
 
-**If `M < N × 0.7` (more than 30% of planned PROC- were lost):** This is a process collapse. Phase 1 agents consolidated or skipped artifacts instead of generating them. Do NOT proceed to the briefing. Instead:
-1. Identify which planned PROC- items are in neither `completed` nor `skipped`.
-2. Re-generate the missing ones — include the agent prompt preamble from Step 3. Launch one agent per missing PROC- artifact.
-3. Re-count and report.
+**If many PROC- were skipped:** Report this in the briefing as a signal, not a failure. Skipped artifacts are candidates for interactive deepening where the user's domain context can fill what code reading couldn't. Do NOT force re-generation — that's how you get skeletal, incorrect artifacts.
 
-**If Tier 1 entity coverage is below 70%:** Core entities are missing lifecycle artifacts. Add the missing Tier 1 entities before proceeding. Do NOT add Tier 2/3 entities to fill the gap — that creates bloat, not coverage.
+**If Tier 1 entities are missing:** Flag these specifically in the briefing. Core entity lifecycles are high-value targets for interactive mode — the user likely has the domain knowledge to guide these.
 
-This gate exists because iterations 4→5 showed a 60% PROC collapse (67→27) that devastated coverage. The fix is mechanical: count what was planned vs what was produced, and fill gaps before moving on.
+This check exists to surface gaps for human-guided deepening, not to force automated re-generation. Quality artifacts come from understanding, not from retrying the same code reading that already failed.
 
 ### Coverage gap detection (post-Phase-1 validation)
 
@@ -360,6 +391,23 @@ Additionally, scan for **repetition gaps** — PAT- candidates where the same co
 - GLOSSARY- terms appearing in 2+ service glossaries with different definitions
 - SCH- entities with similar names across services but different field structures
 - PROC- lifecycle patterns applied differently across services
+
+### Count-gap surfacing (MANDATORY)
+
+Compare artifact counts per service and per type. If one service has significantly fewer artifacts than others (e.g., Fulfillment has 5 process artifacts while Orders has 15), surface this as a question to the user:
+
+```
+I notice {service} has noticeably less coverage than other services
+({N} artifacts vs {M} average). A few possibilities:
+
+  1. {service} is genuinely simpler — fewer processes, fewer entities
+  2. The automated pipeline missed things — want me to investigate?
+  3. You know what's missing — tell me and I'll document it
+
+Which is it? (or skip)
+```
+
+This is the most intuitive way to surface gaps — the user can immediately see where coverage is thin and decide whether it matters. Don't force artifact generation; let the user guide whether the gap is real or expected.
 
 Present all gaps as a numbered list with **pre-formulated prompts** the user can pick from. Each gap gets a concrete next action.
 
@@ -399,31 +447,23 @@ Then:
 
 Present the coverage gaps and cross-system patterns from the gap detection above as a single numbered list. No artifact type prefixes in user-facing text. The user picks a number or names their own topic.
 
-Then present the completion message and next steps. The tone should be celebratory — the user just completed a significant journey. Frame what they now have in terms of practical value, not artifact counts.
+Then present the completion message and transition to review. Frame what was produced in terms of quality and usefulness, not artifact counts. The automated pass is the starting point, not the finish line.
 
 ```
-🎉 Scuba complete. Your reef is ready for real work.
+Scuba automated pass complete.
 
-You now have a structured knowledge base covering {N} artifacts across
-{S} services. This isn't just documentation — it's a working reference
-you can use to:
+Across {S} services:
+  {quality summary — e.g., "12 artifacts with Mermaid diagrams,
+   N Key Facts with source citations, M known unknowns flagged"}
 
-  • Write scripts against your data model without reading source code
-  • Create test datasets using the right fields and relationships
-  • Draft tech proposals grounded in actual architecture
-  • Write requirements docs with full cross-service context
-  • Onboard teammates by pointing them at the reef instead of
-    scheduling walkthrough meetings
+The automated pipeline found what the code says. Now let's make sure
+it got things right — and fill in what the code alone can't tell us.
 
-The automated pipeline is done. What you have compounds from here —
-every question you explore makes the reef smarter.
-
-Have SRDs, design docs, SOPs, or meeting notes? Drop them into
-sources/context/ — the reef gets sharper when it knows the why
-behind the code, not just the what.
+Let's review the artifacts together, then I'll ask about the gaps
+where your domain knowledge matters most.
 ```
 
-After the celebration, present coverage gaps as numbered options (same as above).
+After this, proceed directly to interactive review (below). Do NOT present this as optional.
 
 ### PAT- verification (MANDATORY — not optional, not interactive)
 
@@ -474,25 +514,29 @@ If the user picks a gap or asks to explore a topic, enter **interactive mode** (
 
 ---
 
-## Interactive Mode
+## Interactive Review (Default — not optional)
 
-When the user wants to explore gaps after the briefing — or returns later to deepen artifacts.
+After Phase 1, the reef has code-derived facts. Interactive review adds the domain knowledge that makes those facts trustworthy and useful. This is where quality happens.
 
-### Mode selection (MANDATORY before starting)
+**This phase is the default.** Do not skip it. Do not present it as optional. If the user wants to stop, they will say so — but the default posture is "let's review together."
 
-Before asking the first question, present the mode choice:
+### Mode selection
+
+Present the mode choice:
 
 ```
-How would you like to explore these gaps?
+Now let's review what was generated and fill in the gaps.
 
-  1. I'll answer — you ask me questions one at a time, I provide domain context
-  2. Reef answers — reef investigates the code and fills in answers autonomously,
-     then shows me what it found for review
+  1. Walk through together — I'll show you findings and ask questions
+     one at a time. Best for accuracy.
+  2. I'll investigate first — I'll trace answers in code, then show
+     you batches of 3-5 findings for correction. Faster, but may
+     miss domain context.
 ```
 
 Wait for the user to choose. Do NOT proceed without a selection.
 
-- **Option 1 → Human-guided mode** (rules below)
+- **Option 1 → Human-guided mode** (rules below). **This is the recommended default for new reefs or after significant pipeline changes.**
 - **Option 2 → Self-guided mode**: For each question, read source code to find the answer yourself. Present each finding as: "Q: {question} — My finding: {answer with source citations}. Does this match your understanding?" The user reviews and corrects. This is faster but may miss domain context that isn't in code.
 
 ### Human-guided mode rules
