@@ -1579,7 +1579,7 @@ def cmd_manifest(args) -> None:
         if glossary_path.is_file():
             try:
                 glossary_text = glossary_path.read_text(encoding="utf-8")
-                # Parse the disambiguation table: | Term | DAIP | CDM | CTL | RDP |
+                # Parse the disambiguation table: | Term | ServiceA | ServiceB | ... |
                 in_disambig = False
                 svc_columns: list[str] = []
                 for gline in glossary_text.split("\n"):
@@ -1640,13 +1640,12 @@ def cmd_manifest(args) -> None:
         # Detect repeated architectural patterns across services (error handling, auth, etc.)
         # Check both existing artifacts AND manifest-planned operational PROC-
         operational_patterns: dict[str, list[str]] = {}
+        OPERATIONAL_SUFFIXES = ("-ERROR-HANDLING", "-AUTH", "-BACKGROUND-TASKS")
         # From existing artifacts
         for _, fm in artifacts:
             aid = fm.get("id", "").upper()
-            if aid.startswith("PROC-") and any(
-                aid.endswith(suffix) for suffix in ("-ERROR-HANDLING", "-AUTH", "-BACKGROUND-TASKS")
-            ):
-                for suffix in ("-ERROR-HANDLING", "-AUTH", "-BACKGROUND-TASKS"):
+            if aid.startswith("PROC-"):
+                for suffix in OPERATIONAL_SUFFIXES:
                     if aid.endswith(suffix):
                         pat_type = suffix.lstrip("-")
                         operational_patterns.setdefault(pat_type, []).append(aid)
@@ -1655,7 +1654,7 @@ def cmd_manifest(args) -> None:
         for entry in planned:
             aid = entry["id"].upper()
             if entry["type"] == "process" and entry.get("source") == "checklist-D":
-                for suffix in ("-ERROR-HANDLING", "-AUTH", "-BACKGROUND-TASKS"):
+                for suffix in OPERATIONAL_SUFFIXES:
                     if aid.endswith(suffix):
                         pat_type = suffix.lstrip("-")
                         if aid not in operational_patterns.get(pat_type, []):
@@ -1663,11 +1662,66 @@ def cmd_manifest(args) -> None:
                         break
         for pat_type, proc_ids in operational_patterns.items():
             if len(proc_ids) >= 2:
-                slug = pat_type.replace("-", "-")
+                slug = pat_type
                 aid = f"PAT-CROSS-SERVICE-{slug}"
                 if aid not in existing_ids:
                     plan(aid, "pattern", source="cross-service-pattern",
                          note=f"Same pattern ({pat_type}) found in {len(proc_ids)} services: {', '.join(proc_ids)}")
+
+        # --- B2 extension: infrastructure/design pattern detection ---
+        # Detect shared dependencies, middleware patterns, and data flow patterns
+        # across services from source-index.json file analysis.
+        source_index_path = reef / ".reef" / "source-index.json"
+        if source_index_path.is_file():
+            try:
+                si_raw = json.loads(source_index_path.read_text(encoding="utf-8"))
+                si = si_raw.get("sources", si_raw)
+                # Build per-service file lists
+                svc_files: dict[str, list[str]] = {}
+                for svc in services:
+                    svc_upper = svc["name"].upper()
+                    svc_files[svc_upper] = []
+                    for src_name in svc.get("sources", []):
+                        src_data = si.get(src_name, {})
+                        files = src_data.get("files", [])
+                        if isinstance(files, dict):
+                            files = list(files.keys())
+                        svc_files[svc_upper].extend(f.lower() for f in files)
+
+                # Detect infrastructure patterns present in 2+ services
+                INFRA_PATTERNS = {
+                    "STORAGE": ["storage", "bucket", "blob", "s3", "gcs", "minio"],
+                    "QUEUE": ["queue", "celery", "rabbitmq", "pubsub", "kafka", "nats", "redis_queue"],
+                    "CACHE": ["cache", "redis", "memcache"],
+                    "MIDDLEWARE": ["middleware", "interceptor"],
+                    "RETRY": ["retry", "backoff", "circuit_breaker", "tenacity"],
+                    "SCHEDULING": ["scheduler", "cron", "prefect", "airflow", "celery_beat", "periodic"],
+                }
+                for pat_name, keywords in INFRA_PATTERNS.items():
+                    svcs_with_pattern = []
+                    for svc_upper, files in svc_files.items():
+                        if any(any(kw in f for kw in keywords) for f in files):
+                            svcs_with_pattern.append(svc_upper)
+                    if len(svcs_with_pattern) >= 2:
+                        aid = f"PAT-CROSS-SERVICE-{pat_name}"
+                        if aid not in existing_ids and aid not in {e["id"].upper() for e in planned}:
+                            plan(aid, "pattern", source="infra-pattern-detection",
+                                 note=f"{pat_name} pattern found in {len(svcs_with_pattern)} services: {', '.join(svcs_with_pattern)}")
+
+                # Detect data flow patterns: service A emits/exports → service B ingests/imports
+                EMIT_SIGNALS = ["export", "emit", "publish", "produce", "send", "push", "writer"]
+                INGEST_SIGNALS = ["import", "ingest", "consume", "subscribe", "receive", "pull", "reader", "loader"]
+                emitters = [s for s, files in svc_files.items()
+                            if any(any(sig in f for sig in EMIT_SIGNALS) for f in files)]
+                ingesters = [s for s, files in svc_files.items()
+                             if any(any(sig in f for sig in INGEST_SIGNALS) for f in files)]
+                if emitters and ingesters and (set(emitters) != set(ingesters) or len(emitters) >= 2):
+                    aid = "PAT-CROSS-SERVICE-DATA-FLOW"
+                    if aid not in existing_ids and aid not in {e["id"].upper() for e in planned}:
+                        plan(aid, "pattern", source="data-flow-detection",
+                             note=f"Data flow pattern: emitters={', '.join(emitters)}, ingesters={', '.join(ingesters)}")
+            except Exception:
+                pass
 
     # --- Checklist E: FE/BE contracts (sub-step 3.5) ---
     # For services with both frontend and backend repos, plan CON- artifacts
@@ -1688,7 +1742,9 @@ def cmd_manifest(args) -> None:
                      note=f"Frontend-backend contract: {fe} -> backend")
 
     # --- Checklist F: Intra-service data contracts (sub-step 3.7b) ---
-    # Scan source index for signal files indicating internal contracts
+    # Scan source index for signal files indicating internal contracts.
+    # Broadened signals: covers identity, serialization, path conventions,
+    # auth models, event schemas, and orchestration conventions.
     intra_contract_signals = {
         "hash": "Identifier/hash conventions",
         "identifier": "Identifier conventions",
@@ -1696,8 +1752,21 @@ def cmd_manifest(args) -> None:
         "checksum": "Checksum conventions",
         "export": "Export/serialization formats",
         "serializer": "Export/serialization formats",
+        "schema_registry": "Export/serialization formats",
         "path_builder": "Path construction conventions",
         "storage_path": "Path construction conventions",
+        "naming_convention": "Path construction conventions",
+        "authz": "Authorization model",
+        "authorization": "Authorization model",
+        "permission": "Authorization model",
+        "policy": "Authorization model",
+        "rbac": "Authorization model",
+        "event_schema": "Event/message schema conventions",
+        "message_schema": "Event/message schema conventions",
+        "event_type": "Event/message schema conventions",
+        "flow_config": "Orchestration conventions",
+        "task_config": "Orchestration conventions",
+        "deployment": "Orchestration conventions",
     }
     source_index_path = reef / ".reef" / "source-index.json"
     if source_index_path.is_file():
@@ -1879,6 +1948,36 @@ def cmd_manifest(args) -> None:
             seen.add(key)
             deduped.append(entry)
 
+    # --- Service coverage warnings ---
+    # Flag services that have sources in project.json but zero entities or zero artifacts planned.
+    service_warnings = []
+    for svc in services:
+        svc_upper = svc["name"].upper()
+        svc_sources = svc.get("sources", [])
+        tier_info = tiering_report.get(svc_upper, {})
+        total_entities = tier_info.get("tier1", 0) + tier_info.get("tier2", 0) + tier_info.get("tier3", 0)
+        svc_planned = [e for e in deduped if svc_upper in e["id"].upper()]
+        if svc_sources and total_entities == 0:
+            service_warnings.append({
+                "service": svc_upper,
+                "warning": "zero_entities",
+                "detail": f"Service has {len(svc_sources)} source repo(s) but zero entities extracted. "
+                           f"Check that sources/schemas/{svc_upper.lower()}/*/schema.md files exist. "
+                           f"If this is a non-data service (orchestrator, gateway), this is expected — "
+                           f"but entity lifecycle PROC- artifacts will not be generated.",
+                "sources": svc_sources,
+            })
+
+    # Per-service planned counts (for verification)
+    per_service_planned: dict[str, dict[str, int]] = {}
+    for svc in services:
+        svc_upper = svc["name"].upper()
+        svc_items = [e for e in deduped if svc_upper in e["id"].upper()]
+        counts: dict[str, int] = {}
+        for item in svc_items:
+            counts[item["type"]] = counts.get(item["type"], 0) + 1
+        per_service_planned[svc_upper] = counts
+
     # Summary by type
     by_type = {}
     new_count = 0
@@ -1902,13 +2001,14 @@ def cmd_manifest(args) -> None:
     # Write manifest
     write_json(reef / ".reef" / "scuba-manifest.json", manifest)
 
-    emit({
+    result = {
         "status": "ok",
         "total_planned": len(deduped),
         "new": new_count,
         "updates": update_count,
         "by_type": by_type,
         "entity_tiering": tiering_report,
+        "per_service_planned": per_service_planned,
         "proc_floor": {
             "tier1_entities": all_tier1_count,
             "services": len(services),
@@ -1919,7 +2019,10 @@ def cmd_manifest(args) -> None:
             "floor_met": floor_met,
         },
         "manifest_path": str(reef / ".reef" / "scuba-manifest.json"),
-    })
+    }
+    if service_warnings:
+        result["service_warnings"] = service_warnings
+    emit(result)
 
 
 def cmd_log(args) -> None:

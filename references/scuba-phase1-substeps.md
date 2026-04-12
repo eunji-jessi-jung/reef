@@ -1,6 +1,23 @@
-# Scuba Phase 1 Sub-Steps (3.1–3.16)
+# Scuba Phase 1 Sub-Steps (3.0–3.16)
 
 Detailed instructions for each Phase 1 sub-step. Referenced by scuba SKILL.md Step 3. All artifacts produced are `status: "draft"`.
+
+---
+
+## 3.0 — SYS- artifact update [Batch 0 — MANDATORY, runs before all other sub-steps]
+
+Snorkel creates SYS- artifacts as thin overviews. Scuba MUST deepen them. For each existing SYS- artifact:
+
+1. Re-read the full source code entry points, config, and dependency files for the service.
+2. **Add or update these sections:**
+   - `## Dependencies` — table with columns: System | Integration Type | Purpose | Auth Method. List every external system this service depends on (databases, caches, message queues, identity providers, other services).
+   - `## Does NOT Own` — explicit list of what this service does NOT own. This prevents scope creep and clarifies boundaries. Example: "Payments does NOT own user profiles — that is the Identity service's responsibility."
+   - `## Domain Behavior Highlights` — 3-5 bullet points on domain-specific mechanisms (versioning strategies, dedup patterns, caching semantics, async operation models). These are the things a new engineer would need to know beyond "what endpoints exist."
+   - `## Runtime Components` — table with columns: Component | Tech Stack | Purpose | Entry Point. List every deployable unit (backend apps, frontend apps, workers, cron jobs).
+3. **Update Key Facts** to meet the minimum bar (>= 6). Add facts about component count, shared libraries, tech stack choices, deployment model.
+4. **Update `relates_to`** to link to all child artifacts (SCH-, API-, PROC-, CON-, RISK-) that exist or are planned. SYS- artifacts with `relates_to: []` are broken — they should be the root of the artifact graph for their service.
+
+This sub-step runs first because all other sub-steps produce artifacts that should link back to the updated SYS- entry point. Run one agent per service, all in parallel.
 
 ---
 
@@ -106,7 +123,9 @@ For each pair:
 
 After all pairs, add a summary heat map table to the briefing showing coupling ratings.
 
-## 3.7b — Intra-service data contracts
+## 3.7b — Intra-service data contracts [Batch 4b — dedicated agent per service]
+
+**BATCH ISOLATION:** This sub-step runs in its own batch (4b) with one dedicated agent per service. It must NOT be bundled with service-pair contracts (3.7). The manifest lists intra-service CON items with `source: "checklist-F-intra"`. Each agent receives ONLY the intra-service CON items for its service and must write every one. If the manifest has zero intra-service CON for a service, skip that service.
 
 Service-pair contracts (3.7) capture how services talk to each other. But services also define **internal data contracts** — conventions for identifiers, encoding rules, export formats, path structures, authorization models, and event schemas that external consumers or other services implicitly depend on. These are discoverable from code.
 
@@ -138,7 +157,9 @@ Check GLOSSARY- artifacts for terms used in multiple services:
 
 Skip for single-service reefs.
 
-## 3.9 — Pattern and mechanism deepening
+## 3.9 — Pattern and mechanism deepening + PAT- generation [Batch 5a — ONE dedicated agent for ALL PAT items]
+
+**BATCH ISOLATION:** This sub-step gets its own batch (5a) with ONE dedicated agent handling ALL PAT items across all services. PAT artifacts require reading across multiple services — they are synthesis, not per-service work. The agent receives the full list of PAT- IDs from the manifest and must write every one. The agent must list every PAT ID it was assigned and confirm each was written before finishing.
 
 For each named pattern or domain-specific mechanism found in snorkel artifacts' Key Facts or Core Concepts:
 

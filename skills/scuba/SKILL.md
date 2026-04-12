@@ -183,18 +183,20 @@ All artifacts are `status: "draft"`. Interactive mode can promote to `"active"` 
 
 **MANDATORY AGENT PROMPT PREAMBLE — include in EVERY agent prompt for Phase 1 batches:**
 
-When launching agents for any Phase 1 batch (Batch 0-5), you MUST prepend this preamble to each agent's task prompt:
+When launching agents for any Phase 1 batch (Batch 0-7), you MUST prepend this preamble to each agent's task prompt:
 
 > "RULES — read before writing any artifact:
 > 1. Each manifest item = one separate artifact file. Never combine multiple items into one.
 > 2. Never merge entity lifecycles — PROC-PAYMENTS-ORDER-LIFECYCLE and PROC-PAYMENTS-INVOICE-LIFECYCLE are TWO files, not one overview.
 > 3. Never skip an item because another artifact covers similar ground. Overlap is fine. Missing is not.
 > 4. If content is thin, write it thin: minimum Key Facts + known_unknowns. Thin > missing.
-> 5. After writing each artifact, move it from `planned` to `completed` in the manifest.
-> 6. Your output must contain exactly as many artifact files as manifest items assigned to you.
-> 7. DEPTH: Read at least 3 source files per artifact. Every Key Fact must cite a specific file path with `→`. Target 10-15 Key Facts, not just the minimum. If the artifact updates an existing one, read its known_unknowns first and resolve as many as you can."
+> 5. Your output must contain exactly as many artifact files as manifest items assigned to you. List every artifact ID you were assigned and confirm each one was written.
+> 6. DEPTH: Read at least 3 source files per artifact. Every Key Fact must cite a specific file path with `→`. Target 10-15 Key Facts, not just the minimum. If the artifact updates an existing one, read its known_unknowns first and resolve as many as you can.
+> 7. When you finish, output a completion report listing every assigned artifact ID and its status (written / skipped with reason). This is mandatory — do not end without it."
 
 This preamble exists because Phase 1 agents do not see the full skill text. Without it, agents consolidate planned artifacts into fewer, broader docs — the #1 failure mode in previous iterations.
+
+**DO NOT delegate manifest tracking to agents.** Agents write artifacts and report what they wrote. The orchestrator (you) owns the manifest. See "Orchestrator-owned manifest tracking" below.
 
 ### Lint-on-write (MANDATORY for every artifact)
 
@@ -206,14 +208,28 @@ python3 ${CLAUDE_PLUGIN_ROOT}/scripts/reef.py lint --reef <reef-root>
 
 Parse the JSON output, filter to errors for this artifact's ID. If errors are found, fix them now (ID casing, missing fields, filename mismatch, wikilink sync). Do NOT batch lint errors to the end — catch them at write-time. This applies to both automated deepening agents and interactive-mode artifact writes.
 
-### Manifest completion tracking (CRITICAL)
+### Orchestrator-owned manifest tracking (CRITICAL)
 
-After each artifact is written and lint-clean, you MUST update `.reef/scuba-manifest.json`:
-1. Move the item from `planned` to `completed` with a timestamp.
-2. If an artifact is skipped, move it to `skipped` with a `reason` field.
-3. After each batch completes, verify that `completed.length + skipped.length + planned.length` equals the original total. If not, investigate — items are being lost.
+**You (the orchestrator) own manifest tracking — not agents.** Agents write artifact files and return a completion report. After each agent returns, YOU must:
 
-This is not optional. The manifest is the single source of truth for what scuba produced. If it shows `completed: []` after a full run, the tracking failed and the next run cannot resume correctly.
+1. Parse the agent's completion report to get the list of artifact IDs it wrote.
+2. Verify each claimed artifact actually exists on disk (`artifacts/{type}/{filename}.md`).
+3. For each verified artifact, move it from `planned` to `completed` in `.reef/scuba-manifest.json` with a timestamp.
+4. For any assigned artifact the agent did NOT write, check if it's in the agent's skip list with a reason. If so, move to `skipped`. If the agent simply didn't mention it, that artifact was **silently dropped** — add it to a `dropped` recovery list.
+
+**After EVERY batch completes, run the batch verification gate** (see below). Do NOT proceed to the next batch until this passes.
+
+### Batch verification gate (MANDATORY between every batch)
+
+After all agents in a batch return, before starting the next batch:
+
+1. Count: `assigned` (items given to agents in this batch), `written` (verified on disk), `skipped` (with reason), `dropped` (unaccounted for).
+2. **If `dropped > 0`:** Re-launch agents for the dropped items. Include the original preamble plus: "These items were assigned to a previous agent that failed to produce them. You MUST write each one. There are only {N} items — do not stop until all {N} are written."
+3. **If after retry `dropped` is still > 0:** Write them yourself (the orchestrator). A thin artifact with minimum Key Facts is acceptable. Zero is not.
+4. Re-verify: `completed + skipped` for this batch must equal `assigned`. Only then proceed.
+5. Log: "Batch {N} complete: {written} written, {skipped} skipped, {dropped} recovered."
+
+**Invariant check:** After every batch, verify `completed.length + skipped.length + planned.length` equals the original manifest total. If not, items are being lost — stop and investigate before continuing.
 
 ### Minimum depth validation per artifact
 
@@ -230,94 +246,63 @@ After writing each artifact, validate it against the minimum depth bar for its t
 | CON- | 6 | 8-10 | Parties, Key Facts, Agreement, Current State, Impact Analysis, Related | Mermaid `sequenceDiagram` |
 | DEC- | 5 | 8-10 | Context, Decision, Key Facts, Rationale, Consequences, Related | — |
 | RISK- | 5 | 8-10 | Description, Key Facts, Findings table, Recommended Actions, Related | — |
+| PAT- | 6 | 8-10 | Overview, Key Facts, Where It Appears, Design Intent, Trade-offs, Agent Guidance, Related | — |
 | GLOSSARY- | N/A | N/A | Overview, Terms table, Related | — |
 
 An artifact that does not meet its minimum Key Facts count is **not complete**. Read additional source files to find more verifiable claims before marking it done.
 
 **Known-unknowns resolution (for updates):** When updating an existing artifact, read its `known_unknowns` list first. For each item, attempt to resolve it by reading the relevant source code. Resolved items become Key Facts (with `→ source`). Unresolvable items stay in `known_unknowns`. This is the single highest-ROI quality action — the gaps are already identified.
 
-**Parallelism — CRITICAL for time efficiency.** The 16 sub-steps are NOT all sequential. Execute in 5 parallel batches:
+**Parallelism — CRITICAL for time efficiency.** The 16 sub-steps are NOT all sequential. Execute in 8 parallel batches. Each batch is scoped narrowly so agents cannot lose focus or silently drop items.
 
-| Batch | Sub-steps | What | Parallelism |
-|-------|-----------|------|-------------|
-| 0. Foundation | 3.0 | SYS- artifact updates | One agent per service |
-| 1. Spec Layer | 3.1, 3.2 | API patterns + Schema docs | One agent per service |
-| 2. Entity Deep-Dive | 3.3, 3.15, 3.16 | Entity lifecycles + per-collection SCH- + field lineage | One agent per service |
-| 3. Service Signals | 3.4, 3.6, 3.10, 3.13 | Auth + error handling + risks + flow catalogs | One agent per service |
-| 4. Cross-Service | 3.5, 3.7, 3.7b, 3.8, 3.14 | FE/BE contracts + service pairs + intra-service data contracts + entity comparisons + multi-app comparisons | One agent per pair/service |
-| 5. Synthesis | 3.9, 3.11, 3.12 | Patterns + PAT- from manifest + DEC- + GLOSSARY- per service | One agent per category |
+| Batch | Sub-steps | What | Parallelism | Max items/agent |
+|-------|-----------|------|-------------|-----------------|
+| 0. Foundation | 3.0 | SYS- artifact updates | One agent per service | 1 |
+| 1. Spec Layer | 3.1, 3.2 | API patterns + Schema docs | One agent per service | ~3-5 |
+| 2. Entity Deep-Dive | 3.3, 3.15, 3.16 | Entity lifecycles + per-collection SCH- + field lineage | One agent per service | ~5-15 |
+| 3. Service Signals | 3.4, 3.6, 3.10, 3.13 | Auth + error handling + risks + flow catalogs | One agent per service | ~4 |
+| 4a. Service Pair CON | 3.7 | Service-pair contracts (N×(N-1)/2) | One agent per pair | 1 |
+| 4b. Intra-service CON | 3.7b | Intra-service data contracts | One agent per service | ~1-3 |
+| 4c. Comparisons | 3.5, 3.8, 3.14 | FE/BE contracts + entity comparisons + multi-app comparisons | One agent per service | ~2-5 |
+| 5a. PAT | 3.9 | Pattern artifacts from manifest + deepening signals | One agent for ALL PAT items | all PAT |
+| 5b. DEC + GLOSSARY | 3.11, 3.12 | Decisions + per-service glossaries | One agent per service | ~2 |
 
-Batch 0 runs first — SYS- updates must complete before other artifacts reference them. Within each subsequent batch, launch one Agent per service (or per pair for Batch 4). Batches 1-3 can run concurrently since they read different aspects of the same code. Batch 4 depends on Batch 1-2 results (needs SCH- and GLOSSARY- artifacts). Batch 5 depends on all prior batches.
+**Why 8 batches instead of 6:** Previous iterations showed that bundling CON service-pairs with intra-service CON and comparisons into one batch caused agents to complete the first sub-step and silently drop the rest. Same for bundling PAT with DEC/GLOSSARY. Each artifact type that has been dropped in prior iterations now gets its own batch.
 
-**Minimum execution:** 4 sequential rounds (Batch 0, then Batches 1-3 together, then 4, then 5), each internally parallel.
+**Batch 4b is critical.** Intra-service CON artifacts (identifier conventions, export formats, path construction, auth models, event schemas) are the most commonly dropped artifact type. They require scanning service internals for specific signal files — a different task than writing service-pair contracts. A dedicated agent per service ensures they are not lost.
 
-**Read `references/scuba-phase1-substeps.md`** for full details on each sub-step. Summary of each:
+**Batch 5a is critical.** PAT artifacts require reading artifacts from multiple services to compare divergences. They are a synthesis task, not a per-service task. One dedicated agent handles ALL manifest-planned PAT items plus any PAT candidates flagged during Phase 1. This agent gets the full list of PAT IDs and must write every one.
 
-### 3.0 — SYS- artifact update (MANDATORY — runs before all other sub-steps)
+Batch 0 runs first. Batches 1-3 run concurrently. Batches 4a-4c run concurrently (after 1-3). Batches 5a-5b run concurrently (after 4a-4c).
 
-Snorkel creates SYS- artifacts as thin overviews. Scuba MUST deepen them. For each existing SYS- artifact:
+**Minimum execution:** 4 sequential rounds (Batch 0 → Batches 1-3 → Batches 4a-4c → Batches 5a-5b), each internally parallel. Run the **batch verification gate** between every round.
 
-1. Re-read the full source code entry points, config, and dependency files for the service.
-2. **Add or update these sections:**
-   - `## Dependencies` — table with columns: System | Integration Type | Purpose | Auth Method. List every external system this service depends on (databases, caches, message queues, identity providers, other services).
-   - `## Does NOT Own` — explicit list of what this service does NOT own. This prevents scope creep and clarifies boundaries. Example: "Payments does NOT own user profiles — that is the Identity service's responsibility."
-   - `## Domain Behavior Highlights` — 3-5 bullet points on domain-specific mechanisms (versioning strategies, dedup patterns, caching semantics, async operation models). These are the things a new engineer would need to know beyond "what endpoints exist."
-   - `## Runtime Components` — table with columns: Component | Tech Stack | Purpose | Entry Point. List every deployable unit (backend apps, frontend apps, workers, cron jobs).
-3. **Update Key Facts** to meet the minimum bar (>= 6). Add facts about component count, shared libraries, tech stack choices, deployment model.
-4. **Update `relates_to`** to link to all child artifacts (SCH-, API-, PROC-, CON-, RISK-) that exist or are planned. SYS- artifacts with `relates_to: []` are broken — they should be the root of the artifact graph for their service.
+**Read `references/scuba-phase1-substeps.md`** for full details on every sub-step (3.0–3.16). The reference file is the source of truth for what each sub-step does, what templates to use, and what completeness checks to run.
 
-This sub-step runs first because all other sub-steps produce artifacts that should link back to the updated SYS- entry point. Run one agent per service, all in parallel.
+### Sub-step → Batch dispatch table
 
-### 3.1 — API pattern analysis
-Analyze OpenAPI specs → write API- artifacts as "delta layer on top of OpenAPI" with surface profile, auth posture, non-CRUD actions, pagination, and contract limits. **Must include `### Worked Example`** with realistic JSON request/response.
+| Sub-step | Batch | Artifact type | Key constraint |
+|----------|-------|--------------|----------------|
+| 3.0 SYS- update | 0 | SYS- | Must run first; one agent/service |
+| 3.1 API patterns | 1 | API- | Requires Worked Example |
+| 3.2 Schema docs | 1 | SCH- | Requires Mermaid erDiagram |
+| 3.3 Entity lifecycles | 2 | PROC- lifecycle | One per Tier 1 entity; stateDiagram if status field |
+| 3.4 Auth boundaries | 3 | PROC- operational | One per service |
+| 3.5 FE/BE contracts | 4c | CON- | Skip if no frontend repos |
+| 3.6 Error handling | 3 | PROC- or RISK- | One per service |
+| 3.7 Service pair CON | 4a | CON- pair | **One agent per pair**; count must = N×(N-1)/2 |
+| 3.7b Intra-service CON | 4b | CON- intra | **Dedicated agent per service**; items tagged `checklist-F-intra` |
+| 3.8 Entity comparison | 4c | CON- | Skip for single-service reefs |
+| 3.9 PAT- generation | 5a | PAT- | **ONE agent for ALL PAT items**; must write every manifest-planned PAT |
+| 3.10 RISK- | 3 | RISK- | Severity by density |
+| 3.11 DEC- | 5b | DEC- | ADR format |
+| 3.12 GLOSSARY- | 5b | GLOSSARY- | Per-service + SOURCE-INDEX |
+| 3.13 Flow catalogs | 3 | PROC- flow | Skip if no pipelines |
+| 3.14 Multi-app comparison | 4c | PROC- comparison | Skip for single-app services |
+| 3.15 Per-collection SCH- | 2 | SCH- | 3+ collections only |
+| 3.16 Field lineage | 2 | SCH- lineage | Skip for simple CRUD |
 
-### 3.2 — Comprehensive schema documentation
-Read extracted ERDs → write SCH- artifacts with field tables, entity descriptions, relationships. **Must include Mermaid `erDiagram`** (RDB) or `classDiagram` (document store). Max 15 entities per diagram.
-
-### 3.3 — Entity definition and lifecycle artifacts
-PROC- artifact for every core entity in manifest. **Naming:** `PROC-{SERVICE}-{ENTITY}-LIFECYCLE`. Template: `references/templates/process-entity-lifecycle.md`. **Must include Mermaid `stateDiagram-v2`** if status field exists, plus `## Agent Guidance` section. **Completeness check** against schema entity list after each service.
-   - **Relationships**: reference other PROC-{SERVICE}-{ENTITY}-LIFECYCLE artifacts
-### 3.4 — Auth boundary artifacts
-Scan for JWT, OAuth, RBAC, API keys, service accounts → write PROC- per service's auth pattern.
-
-### 3.5 — FE/BE contract identification
-Scan frontend repos for generated API clients, shared types, auth flow → write CON- per FE/BE pair. Skip if no frontend repos.
-
-### 3.6 — Error handling patterns per service
-Scan for exception handlers, retry logic, timeouts, circuit breakers, dead-letter queues → write PROC- or RISK- per service.
-
-### 3.7 — Service contracts (all pairs)
-CON- artifact for **every** service pair (N×(N-1)/2). Template: `references/templates/contract-service-pair.md`. **Must include Mermaid `sequenceDiagram`** and `## Impact Analysis` for detected integrations. Use "No Integration Detected" section for pairs with no interaction. **Completeness check:** count must equal N×(N-1)/2.
-
-### 3.7b — Intra-service data contracts
-Scan each service for **internal conventions that external consumers depend on**: identifier/hash generation, export formats, path construction, authorization models, event schemas. Only create CON- if the signal is substantial (not trivial utilities). Template: `references/templates/contract.md` (generic). See `references/scuba-phase1-substeps.md` for the 5 signal types and rules.
-
-### 3.8 — Cross-service entity comparison
-For terms appearing in SCH- from different services → CON- with side-by-side field comparison, semantic mismatches, canonical writing rules. Skip for single-service reefs.
-
-### 3.9 — Pattern and mechanism deepening + PAT- generation
-Investigate named patterns from snorkel artifacts → PROC- or DEC- per pattern. Then **generate all manifest-planned PAT- artifacts** using `references/templates/pattern.md`. These are high-confidence cross-service divergences detected by `reef.py manifest` — create them with structural facts, marking Design Intent as `known_unknown` if the *why* isn't clear from code. Subjective patterns stay flagged for interactive mode. Flag anything requiring 5+ files for `/reef:deep`.
-
-### 3.10 — Per-service RISK- artifacts
-Scan for TODO/FIXME/HACK, bare exceptions, hardcoded credentials, missing error handling, skipped tests → RISK- per service. Template: `references/templates/risk-service.md`. Severity by density (10+=high, 5-9=medium, 1-4=low).
-
-### 3.11 — DEC- from observable patterns
-ADR format for each planned DEC-: Context (code evidence), Decision (specific), Consequences (observable), Rationale (if determinable, else `known_unknowns`).
-
-### 3.12 — Per-service GLOSSARY- artifacts
-Extract domain terms from all artifacts for each service → GLOSSARY-{SERVICE}. Template: `references/templates/glossary-service.md`. Do NOT guess acronym expansions. Cross-reference with unified GLOSSARY-. Generate GLOSSARY-SOURCE-INDEX when all per-service glossaries are done.
-
-### 3.13 — PROC- flow catalogs
-Enumerate Prefect flows, Celery tasks, Airflow DAGs, background jobs → PROC-{SERVICE}-FLOW-CATALOG. Template: `references/templates/process-flow-catalog.md`. Include Mermaid `graph` of flow dependencies. Skip if no pipelines.
-
-### 3.14 — PROC- multi-app comparison pairs
-Detect mirrored implementations across sub-apps → document shared vs different with side-by-side tables. Skip for single-app services.
-
-### 3.15 — SCH- per-collection (document stores)
-One SCH- per MongoDB collection (3+ collections): fields, embedded vs referenced, indexes, Mermaid nesting diagram.
-
-### 3.16 — SCH- field lineage
-Trace non-trivial field origins (API input, external system, computed, copied, system-generated) → lineage table + Mermaid `flowchart`. Skip for simple CRUD entities.
+**Batches 4b and 5a are the most critical.** Intra-service CON and PAT artifacts are the most commonly dropped types in prior iterations. They each have dedicated batches with isolated agents specifically to prevent this. Do NOT merge them with other batches for "efficiency."
 
 ---
 
@@ -440,31 +425,30 @@ behind the code, not just the what.
 
 After the celebration, present coverage gaps as numbered options (same as above).
 
-### PAT- candidate callout (MANDATORY if candidates exist)
+### PAT- verification (MANDATORY — not optional, not interactive)
 
-If the manifest includes PAT- entries or if the cross-service divergence scan (Step 2) flagged pattern candidates, present them explicitly:
+All manifest-planned PAT- artifacts MUST be generated during Phase 1 (Batch 5a, sub-step 3.9). They are NOT deferred to interactive mode. Interactive mode is for subjective PAT candidates only — patterns the user might want to explore that weren't auto-detected.
+
+**Verification:** After Batch 5a completes, check that every PAT- entry in the manifest is in `completed`. If any are missing, this is a Batch 5a failure — re-run the batch verification gate (re-launch an agent for the missing PAT items).
+
+**Briefing presentation:** Report completed PAT artifacts as part of the standard briefing. If subjective PAT candidates were flagged during Phase 1 (patterns noticed but not in the manifest), present them:
 
 ```
-📐 Pattern candidates detected: {N}
+📐 Additional pattern candidates: {N}
 
-The automated pipeline found {N} cross-service patterns worth documenting.
-These capture reusable design conventions — the "why" behind recurring
-structural choices:
+Phase 1 noticed {N} patterns that weren't in the automated manifest.
+These may benefit from your domain context:
 
-  {numbered list of PAT- candidates with plain-language descriptions,
-   e.g., "1. How 'order' is modeled differently across Payments vs Fulfillment vs Returns"
-         "2. Error handling conventions compared across all services"
-         "3. Authorization enforcement — same intent, different mechanisms"}
+  {numbered list with plain-language descriptions}
 
 Pick a number to create it now, or I can generate all {N} automatically.
 ```
 
-**Rules for PAT- callout:**
-- **Manifest-planned PAT- should already be generated** by sub-step 3.9. If they are, report them as completed in the briefing. If Phase 1 failed to produce them (check manifest `completed` for PAT- entries), this callout is the **recovery mechanism** — generate them now before proceeding.
-- **Subjective PAT- candidates** (noticed during Phase 1 but not in the manifest) are surfaced here for the user to decide.
+**Rules:**
+- Manifest-planned PAT- are never presented as options — they are already written.
+- Subjective PAT- candidates are optional. The user chooses whether to pursue them.
 - Phrase each as the design question it answers, not an artifact ID.
-- Offer the option to generate all subjective candidates automatically.
-- If the user says "generate all," create each PAT- artifact using the `references/templates/pattern.md` template. Read source code to fill in Design Intent, Trade-offs, and Where It Appears sections. Mark as `status: draft`.
+- If the user says "generate all," create each using `references/templates/pattern.md`. Mark as `status: draft`.
 
 Then, **only if gaps exist that would benefit from line-by-line tracing**, add a soft lead-in to deep — framed through the gaps, not as a sales pitch:
 
