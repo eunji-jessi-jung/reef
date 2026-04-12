@@ -115,18 +115,63 @@ This command reads `project.json`, `sources/apis/`, and `sources/schemas/` to ge
 
 The manifest is saved to `.reef/scuba-manifest.json`. Read it and report the counts.
 
-**Step 2: Augment the manifest with Claude-discovered items.**
+**Step 2: Augment the manifest using the mandatory checklist.**
 
-The programmatic manifest covers what can be detected from file structure and schema headings. Review it and add items it cannot detect:
+The programmatic manifest covers what can be detected from file structure and schema headings. You MUST walk through this checklist and add items it misses. This is not optional — skipping this checklist is the primary cause of coverage gaps.
 
-- **PAT- candidates** from snorkel signal mining (Step 2). These are NOT planned for Phase 1. Instead, list them as Phase 2 candidates. A PAT- artifact is warranted when you notice: the same concept modeled differently across systems, a recurring design convention whose rationale isn't obvious from code alone, or an architectural boundary pattern that governs how things are built. Examples: FK vs link table choice, cross-system entity comparison (same word, different meaning), orchestration vs individual execution model, control plane vs data plane separation.
-- **PROC- multi-app comparison pairs** — for services where the same domain concept is implemented differently across sub-apps (parallel directory structures, similar-but-not-identical models). One per {concept} × {app-pair}. These require reading source code to detect mirrored structures.
-- **SCH- field lineage** — for core entities with complex data origins (ingestion pipelines, ETL, computed fields). One per entity group. Requires reading ingestion/transform code to identify.
+**Checklist A — SYS- updates (MANDATORY for every service):**
+- [ ] For each existing SYS- artifact, plan an **update** entry. SYS- artifacts created by snorkel are thin — scuba must add: dependency table (what external systems this service depends on), "Does NOT Own" section (explicit ownership boundaries), behavior highlights (domain-specific mechanisms like versioning, dedup, caching), and runtime component inventory with tech stacks. Without this step, system artifacts stay at snorkel depth (typically 2/5 quality).
+
+**Checklist B — SCH- field lineage (check every service):**
+- [ ] For each service with ingestion, ETL, transform, or computed field logic → plan one SCH- field lineage artifact per entity group. Read ingestion/transform code directories to identify candidates. Common signals: `*_hash` fields, `*_data` snapshot tables, fields copied from external APIs, fields derived from other fields. If a service has no transform logic, skip with a note.
+
+**Checklist C — Individual flow PROC- artifacts (check pipeline services):**
+- [ ] Read any existing PROC- flow catalog. For **every flow listed in the catalog**, check if an individual PROC- artifact exists. If not, plan one. This is the most commonly missed gap — catalogs list 20+ flows but only 5-10 get individual artifacts.
+- [ ] Specifically check for: analytics/reporting flows, validation flows, cleanup/maintenance flows — these are the flows most often skipped because they seem "less important" than ingestion/inference.
+
+**Checklist D — Operational/boundary PROC- artifacts (check every service):**
+- [ ] For each service, check if these operational artifacts exist. Plan any that are missing:
+  - PROC-{SERVICE}-AUDIT or PROC-{SERVICE}-TRACEABILITY — if the service has audit logging, traceability, or compliance patterns
+  - PROC-{SERVICE}-OPERATIONS — if the service has deployment config, feature flags, runtime controls, health checks
+  - PROC-{SERVICE}-DATA-SERVING — if the service serves data to other systems or frontends (data fetch patterns, caching, pagination boundaries)
+  - PROC-{SERVICE}-DATABASE-STRATEGY — if the service uses multiple databases, modal isolation, or non-obvious persistence patterns
+
+**Checklist E — Partial questions (check questions.json):**
+- [ ] Read `.reef/questions.json`. For every question with `status: "partial"`, identify which artifact would answer it more fully. If no artifact is planned for that topic, add one to the manifest.
+
+**Checklist F — Cross-system artifacts:**
+- **PAT- candidates** from snorkel signal mining (Step 2). These are NOT planned for Phase 1. Instead, list them as Phase 2 candidates. A PAT- artifact is warranted when you notice: the same concept modeled differently across systems, a recurring design convention whose rationale isn't obvious from code alone, or an architectural boundary pattern that governs how things are built.
+- **PROC- multi-app comparison pairs** — for services where the same domain concept is implemented differently across sub-apps. One per {concept} × {app-pair}.
 - **CON- entity comparisons** — for terms appearing in SCH- from different services with potentially different meanings.
 
-Add these to the manifest's `planned` array and re-save.
+**Checklist G — Domain labeling for cross-system artifacts:**
+- [ ] Any CON- artifact between services, GLOSSARY-UNIFIED, entity comparison artifacts, and ecosystem-level RISK- artifacts must use the project-level domain slug from `project.json` (e.g., `domain: "myproject"`), NOT a single service's domain. This ensures cross-system artifacts are discoverable and don't create false "0% coverage" gaps for the shared/cross-system domain.
 
-**Step 3: Review and prune.**
+Add all discovered items to the manifest's `planned` array and re-save. Report the checklist results:
+
+```
+Manifest augmentation checklist:
+  A. SYS- updates:           N planned (one per service)
+  B. SCH- field lineage:     N planned (from N services with transform logic)
+  C. Individual flow PROC-:  N planned (from flow catalog gaps)
+  D. Operational PROC-:      N planned (audit, operations, data-serving, db-strategy)
+  E. Partial question PROC-: N planned (from N partial questions)
+  F. Cross-system:           N planned (comparisons, entity comparisons)
+  G. Domain relabeling:      N artifacts to fix
+```
+
+**Step 3: Pre-execution coverage gap detection.**
+
+Before pruning, run the gap detection logic that would otherwise only run in the Phase 1 briefing (Step 4). This catches structural gaps while they can still be added to the manifest:
+
+1. **Entity-to-PROC ratio:** For each service, count entities in SCH- artifacts vs planned PROC- entity lifecycles. If a service has 15 entities but only 5 planned PROC-, add the missing ones.
+2. **Flow catalog coverage:** For each PROC- flow catalog, compare listed flows against planned individual PROC- artifacts. Add any uncovered flows.
+3. **Service pair coverage:** Count planned CON- artifacts vs N×(N-1)/2 required pairs. Add any missing pairs.
+4. **Question coverage:** For each unanswered or partial question, check if a planned artifact addresses it. Flag uncovered questions.
+
+Add any gaps found to the `planned` array.
+
+**Step 4: Review and prune.**
 
 Scan the manifest for entries that are clearly not worth a full artifact:
 - Reference/lookup entities with only 2-3 trivial fields (move to `skipped` with reason)
@@ -140,23 +185,26 @@ Print the full manifest with counts:
 
 ```
 Artifact generation manifest:
-  API-  artifacts:       N planned (M new, K updates)
-  SCH-  artifacts:       N planned (M new, K updates)
-  SCH-  per-collection:  N planned
-  SCH-  field lineage:   N planned
-  PROC- entities:        N planned (from X core entities across Y schemas)
-  PROC- auth:            N planned
-  PROC- flow catalogs:   N planned
-  PROC- comparisons:     N planned
-  CON-  contracts:       N planned (M new, K updates)
-  RISK- per service:     N planned
-  DEC-  observable:      N planned
-  GLOSSARY- per service: N planned
+  SYS-  updates:           N planned (deepening existing snorkel artifacts)
+  API-  artifacts:         N planned (M new, K updates)
+  SCH-  artifacts:         N planned (M new, K updates)
+  SCH-  per-collection:    N planned
+  SCH-  field lineage:     N planned (from checklist B)
+  PROC- entities:          N planned (from X core entities across Y schemas)
+  PROC- auth:              N planned
+  PROC- flow catalogs:     N planned
+  PROC- individual flows:  N planned (from checklist C — flow catalog gaps)
+  PROC- operational:       N planned (from checklist D — audit, ops, data-serving)
+  PROC- comparisons:       N planned
+  CON-  contracts:         N planned (M new, K updates)
+  RISK- per service:       N planned
+  DEC-  observable:        N planned
+  GLOSSARY- per service:   N planned
   ──────────────
-  Phase 1 total:         N artifacts
+  Phase 1 total:           N artifacts
 
   Phase 2 candidates (require human input):
-  PAT-  patterns:        N candidates (from cross-system divergence signals)
+  PAT-  patterns:          N candidates (from cross-system divergence signals)
 ```
 
 Save the manifest to `.reef/scuba-manifest.json` with this structure:
@@ -201,21 +249,65 @@ No user input after confirmation. Work through the manifest systematically — e
 
 All Phase 1 artifacts are `status: "draft"`. Phase 2 can promote to `"active"` with user confirmation.
 
+### Manifest completion tracking (CRITICAL)
+
+After each artifact is written, you MUST update `.reef/scuba-manifest.json`:
+1. Move the item from `planned` to `completed` with a timestamp.
+2. If an artifact is skipped, move it to `skipped` with a `reason` field.
+3. After each batch completes, verify that `completed.length + skipped.length + planned.length` equals the original total. If not, investigate — items are being lost.
+
+This is not optional. The manifest is the single source of truth for what scuba produced. If it shows `completed: []` after a full run, the tracking failed and the next run cannot resume correctly.
+
+### Minimum depth validation per artifact
+
+After writing each artifact, validate it against the minimum depth bar for its type. If an artifact fails validation, read more source code and deepen it before marking it complete.
+
+| Type | Minimum Key Facts | Required Sections | Required Visuals |
+|------|-------------------|-------------------|------------------|
+| SYS- | 6 | Overview, Key Facts, Responsibilities, "Does NOT Own", Core Concepts, Dependencies table, Related | — |
+| API- | 6 | Overview, Key Facts, Source of Truth, Resource Map, Worked Example, Related | — |
+| SCH- | 5 | Overview, Key Facts, Entities (with field tables), Related | Mermaid `erDiagram` (mandatory) |
+| PROC- (entity lifecycle) | 8 | Purpose, Key Facts, States/Transitions table, Agent Guidance, Related | Mermaid `stateDiagram-v2` if status field exists |
+| PROC- (flow/pipeline) | 6 | Purpose, Key Facts, Input/Output, Steps/Phases, Error Handling, Related | Mermaid `flowchart` or `sequenceDiagram` |
+| PROC- (operational) | 5 | Purpose, Key Facts, Scope, Current State, Related | — |
+| CON- | 6 | Parties, Key Facts, Agreement, Current State, Impact Analysis, Related | Mermaid `sequenceDiagram` |
+| DEC- | 5 | Context, Decision, Key Facts, Rationale, Consequences, Related | — |
+| RISK- | 4 | Description, Key Facts, Findings table, Recommended Actions, Related | — |
+| GLOSSARY- | N/A | Overview, Terms table, Related | — |
+
+An artifact that does not meet its minimum Key Facts count is **not complete**. Read additional source files to find more verifiable claims before marking it done.
+
 **Parallelism — CRITICAL for time efficiency.** The 16 sub-steps are NOT all sequential. Execute in 5 parallel batches:
 
 | Batch | Sub-steps | What | Parallelism |
 |-------|-----------|------|-------------|
+| 0. Foundation | 3.0 | SYS- artifact updates | One agent per service |
 | 1. Spec Layer | 3.1, 3.2 | API patterns + Schema docs | One agent per service |
 | 2. Entity Deep-Dive | 3.3, 3.15, 3.16 | Entity lifecycles + per-collection SCH- + field lineage | One agent per service |
 | 3. Service Signals | 3.4, 3.6, 3.10, 3.13 | Auth + error handling + risks + flow catalogs | One agent per service |
 | 4. Cross-Service | 3.5, 3.7, 3.8, 3.14 | FE/BE contracts + service pairs + entity comparisons + multi-app comparisons | One agent per pair |
 | 5. Synthesis | 3.9, 3.11, 3.12 | Patterns + DEC- + GLOSSARY- per service | One agent per category |
 
-Within each batch, launch one Agent per service (or per pair for Batch 4). Batches 1-3 can run concurrently since they read different aspects of the same code. Batch 4 depends on Batch 1-2 results (needs SCH- and GLOSSARY- artifacts). Batch 5 depends on all prior batches.
+Batch 0 runs first — SYS- updates must complete before other artifacts reference them. Within each subsequent batch, launch one Agent per service (or per pair for Batch 4). Batches 1-3 can run concurrently since they read different aspects of the same code. Batch 4 depends on Batch 1-2 results (needs SCH- and GLOSSARY- artifacts). Batch 5 depends on all prior batches.
 
-**Minimum execution:** 3 sequential rounds (Batches 1-3 together, then 4, then 5), each internally parallel.
+**Minimum execution:** 4 sequential rounds (Batch 0, then Batches 1-3 together, then 4, then 5), each internally parallel.
 
 **Read `references/scuba-phase1-substeps.md`** for full details on each sub-step. Summary of each:
+
+### 3.0 — SYS- artifact update (MANDATORY — runs before all other sub-steps)
+
+Snorkel creates SYS- artifacts as thin overviews. Scuba MUST deepen them. For each existing SYS- artifact:
+
+1. Re-read the full source code entry points, config, and dependency files for the service.
+2. **Add or update these sections:**
+   - `## Dependencies` — table with columns: System | Integration Type | Purpose | Auth Method. List every external system this service depends on (databases, caches, message queues, identity providers, other services).
+   - `## Does NOT Own` — explicit list of what this service does NOT own. This prevents scope creep and clarifies boundaries. Example: "Payments does NOT own user profiles — that is the Identity service's responsibility."
+   - `## Domain Behavior Highlights` — 3-5 bullet points on domain-specific mechanisms (versioning strategies, dedup patterns, caching semantics, async operation models). These are the things a new engineer would need to know beyond "what endpoints exist."
+   - `## Runtime Components` — table with columns: Component | Tech Stack | Purpose | Entry Point. List every deployable unit (backend apps, frontend apps, workers, cron jobs).
+3. **Update Key Facts** to meet the minimum bar (>= 6). Add facts about component count, shared libraries, tech stack choices, deployment model.
+4. **Update `relates_to`** to link to all child artifacts (SCH-, API-, PROC-, CON-, RISK-) that exist or are planned. SYS- artifacts with `relates_to: []` are broken — they should be the root of the artifact graph for their service.
+
+This sub-step runs first because all other sub-steps produce artifacts that should link back to the updated SYS- entry point. Run one agent per service, all in parallel.
 
 ### 3.1 — API pattern analysis
 Analyze OpenAPI specs → write API- artifacts as "delta layer on top of OpenAPI" with surface profile, auth posture, non-CRUD actions, pagination, and contract limits. **Must include `### Worked Example`** with realistic JSON request/response.
@@ -269,54 +361,43 @@ Trace non-trivial field origins (API input, external system, computed, copied, s
 
 ## Step 4 — Phase 1 Briefing
 
-After all sub-steps, read `.reef/scuba-manifest.json` and present a manifest-based summary covering:
+### 4.0 — Manifest reconciliation (MANDATORY before briefing)
+
+Before presenting results, verify the manifest is accurate:
+
+1. Read `.reef/scuba-manifest.json`. Count `planned`, `completed`, and `skipped` entries.
+2. Scan `artifacts/` directory for all actual artifact files. Count them.
+3. **If `completed` is empty but artifacts exist:** The manifest was not updated during Phase 1. This is a tracking failure. Fix it now:
+   - For each artifact file in `artifacts/`, check if it matches a `planned` entry by ID.
+   - If it matches, move it to `completed` with `timestamp: "reconciled"`.
+   - If it doesn't match any planned entry (artifact was created beyond the manifest), add it to `completed` with `source: "unplanned"`.
+   - Re-save the manifest.
+4. **Report the reconciliation:** "Manifest reconciled: N planned items matched to artifacts, M unplanned artifacts discovered, K items still pending."
+
+This step ensures the manifest is a truthful record of what was produced, enabling accurate resume on the next run.
+
+### 4.1 — Summary
+
+Present a manifest-based summary covering:
 
 1. **Manifest completion** — N/M completed, K skipped (per category: API-, SCH-, PROC-, CON-, RISK-, DEC-, GLOSSARY-, PAT-)
 2. **Skipped artifacts** with reasons
 3. **Key findings** — notable patterns, heaviest couplings, complex lifecycles
 
-### Coverage gap detection (domain-agnostic)
+### Coverage gap detection (post-Phase-1 validation)
 
-Scan the reef's current artifacts for structural gaps. These are detectable from the reef itself — no external baseline needed:
+Re-run the same 4 gap checks from Step 2.5 Step 3 (entity-to-PROC ratio, flow catalog coverage, service pair coverage, question coverage), but this time against **actual artifacts produced**, not just planned items.
 
-**Repetition gaps** — the same concept appearing across services with different implementations:
-- Scan GLOSSARY- artifacts for terms flagged with disambiguation notes or appearing in 2+ service glossaries with different definitions → each is a **PAT- candidate** (cross-system entity comparison)
-- Scan SCH- artifacts for entities with similar names across services but different field structures → PAT- candidate
-- Scan PROC- artifacts for the same lifecycle pattern applied differently (e.g., "auth" exists for every service — do they follow the same pattern or diverge?) → PAT- candidate if they diverge in an interesting way
+Additionally, scan for **repetition gaps** — PAT- candidates where the same concept appears across services with different implementations:
+- GLOSSARY- terms appearing in 2+ service glossaries with different definitions
+- SCH- entities with similar names across services but different field structures
+- PROC- lifecycle patterns applied differently across services
 
-**Depth gaps** — services or areas with thin coverage relative to their complexity:
-- For each service: count PROC- artifacts vs number of entities in that service's SCH-. If a service has 15+ entities but only 3 PROC-, its entity lifecycles are under-documented.
-- For pipeline/orchestration services: count individual flow PROC- artifacts vs flows listed in any flow catalog. If a flow catalog lists 20 flows but only 1 PROC- exists, per-flow documentation is a gap.
-- For multi-app services (multiple sub-applications under one repo): check if comparison artifacts exist. If a service has 3+ apps with parallel structures but no comparison PROC- or PAT-, that's a gap.
-
-**Boundary gaps** — cross-system areas without contracts:
-- Count service pairs (N services → N*(N-1)/2 pairs). Compare against CON- artifact count. Flag uncovered pairs that have known integration points (visible from API calls, shared entities, or `relates_to` edges between services).
-
-Present gaps as a prioritized list with **pre-formulated prompts** the user can pick from:
-
-```
-Phase 2 opportunities (pick a number, or explore something else):
-
-  Undocumented areas:
-  1. Pipeline Service lists 20 flows in its catalog but none have
-     their own documentation
-     → "Document individual pipeline flows" (est. ~15 artifacts)
-  2. Core Service has 12 entities but only 6 have lifecycle docs
-     → "Document remaining entity lifecycles"
-
-  Cross-system patterns worth capturing:
-  3. "order" and "item" appear in both Service A and Service B
-     glossaries with different definitions — how do they relate?
-  4. Three services define "project" differently — worth clarifying
-  5. Service A uses both FK and link tables for relationships —
-     what's the decision rule?
-```
+Present all gaps as a numbered list with **pre-formulated prompts** the user can pick from. Each gap gets a concrete next action.
 
 **Presentation rules:**
-- **Never use artifact type prefixes (PAT-, PROC-, SCH-) in user-facing text.** The user thinks in questions and topics, not artifact types. Reef picks the right type internally when writing.
-- **Frame gaps as questions or observations**, not as "missing artifact X." Say "none have their own documentation" not "0 per-flow PROC- artifacts."
-- **Frame cross-system patterns as insights**, not as "PAT- candidates." Say "three services define Project differently — worth clarifying?" not "Create a PAT- comparing Project."
-- **The key: every gap comes with a concrete next action.** The user doesn't need to formulate the prompt — they pick a number.
+- **Never use artifact type prefixes** in user-facing text. Frame gaps as questions or observations. Say "none have their own documentation" not "0 per-flow PROC- artifacts."
+- **Every gap comes with a concrete next action.** The user picks a number, not formulates a prompt.
 
 4. **Deep-dive flags** — items too detailed for scuba (field-by-field lineage, line-by-line execution paths)
 
@@ -391,43 +472,7 @@ One of four modes based on what the user says:
 
 ### 5.2 — Question patterns
 
-Draw from these patterns, mapped to the understanding template C1-C10. Present one at a time, Socratic style — not as a dumped list.
-
-**Entity lifecycle confirmation (C1):**
-"I found {entity} has states {A, B, C} but I can only trace the A→B transition in code. What triggers B→C? Is it automatic, manual, or event-driven?"
-
-**Critical workflow tracing (C2):**
-"What are the most critical workflows in this service? I can trace the code path — you tell me what matters."
-
-**Heavy dependency deep-dives (C3):**
-"{Service-A} → {Service-B} has {N} endpoint calls across {M} flows. Want to trace the full integration contract — which flows call which endpoints, the auth model, the write-order semantics?"
-
-**Operational reality (C4):**
-"The code shows a {N}s timeout. Does that hold in production? What happens when {service} is slow or down?"
-
-**Decisions and constraints (C5):**
-"I see {pattern} in the code. Was this a deliberate architectural choice? What drove it?"
-
-**Entity comparison confirmation (C6):**
-"I found '{term}' means different things in {service-A} and {service-B}. Is this intentional? Do they ever need to align?"
-
-**RBAC exploration (C7):**
-"{Service} has {N} RBAC primitives. Want to document the full permission model — who can do what, where it's enforced, and what the edge cases are?"
-
-**Concept taxonomy (C8):**
-"{Service} uses '{concept}' {N} times across {M} directories. Is there a formal taxonomy? Want to document the different kinds?"
-
-**Business logic surfacing (C9):**
-"I found terms like '{term1}', '{term2}' that seem to carry business meaning beyond their technical implementation. Can you confirm what these mean to the business?"
-
-**Version boundary exploration (C10):**
-"{Service} has {versions} service layers. What's the migration story? Which versions are active, which are deprecated?"
-
-**Data reconciliation (C4 extension):**
-"If {service-A} uploads to {service-B} and it fails halfway, what happens? Is there reconciliation, retry, or manual intervention?"
-
-**Tribal knowledge (open-ended):**
-"What trips up every new engineer working in this area? What's the thing that isn't in the code?"
+Read `${CLAUDE_PLUGIN_ROOT}/references/scuba-question-patterns.md` for the full set of Socratic question templates (C1-C10). Present one at a time — not as a dumped list.
 
 ### 5.3 — Question-by-question flow
 
@@ -435,7 +480,7 @@ Draw from these patterns, mapped to the understanding template C1-C10. Present o
 
 For each question or topic:
 
-1. **Present the question.** One at a time. Do not dump a list.
+1. **Present the question.** One at a time. Do not dump a list. **Show progress:** "Question 3 / 8" (or "Topic 3 / 8" if user-directed). Count is based on the selected question set from Step 5.2. If the user adds topics mid-session, update the denominator.
 2. **Wait for the user's answer.** Let them talk. Ask follow-ups if something is unclear. Three possible outcomes:
    - **User answers** → go to step 3 (verify).
    - **User says "I don't know" / "not sure"** → offer to investigate: "I can go trace this in the code if you'd like — want me to investigate?" If yes, go to step 3a. If no, skip to the next question.
@@ -468,6 +513,15 @@ Prioritize unanswered questions from `.reef/questions.json`.
 
 **Glossary cross-check:** Before writing, compare domain terms against GLOSSARY- artifacts. Fix drift or ambiguity.
 
+**Domain labeling rule:** Cross-system artifacts must use the project-level domain slug from `project.json`, not a single service's domain. This applies to:
+- CON- artifacts between services (e.g., CON-PAYMENTS-IDENTITY → project-level domain)
+- GLOSSARY-UNIFIED or GLOSSARY-SHARED → project-level domain
+- CON- entity comparison artifacts → project-level domain
+- RISK- artifacts about ecosystem-level concerns → project-level domain
+- PAT- artifacts about cross-system patterns → project-level domain
+
+This ensures cross-system artifacts are discoverable and don't create false coverage gaps for the shared domain.
+
 Status can be "draft" (Phase 1 or uncertain) or "active" (user-confirmed in Phase 2).
 
 ### 5.5 — Post-write commands
@@ -496,6 +550,12 @@ Use "Updated" instead of "Created" in the log message when updating an existing 
   3. **Render health report** — same Unicode box-drawing format as the Phase 1 briefing. Show the final artifact counts, coverage, and freshness so the user sees the full picture of what scuba produced.
   4. Remind the user: "Artifacts are wikilinked — open the reef directory as an Obsidian vault to explore the knowledge graph."
   5. If unanswered questions remain that look like they could be answered by existing docs (architecture specs, PRDs, design docs), mention: "Have docs that might fill these gaps? Drop them in `sources/raw/` and the next scuba pass will use them."
+  6. **What's Next — show the user what the reef is *for* now:**
+     - **Agent context:** Point dev agents (Claude Code, Cursor, Copilot) at the reef directory as context. Artifacts give agents accurate domain knowledge instead of re-deriving from code every time.
+     - **Onboarding:** New teammates open the reef in Obsidian and explore the knowledge graph. Faster ramp-up than reading code or asking questions.
+     - **Documentation:** Artifacts are already structured docs. Export to Confluence, Notion, or a static site if the team needs a shared reference outside Obsidian.
+     - **Audit and review:** Before architecture reviews, compliance audits, or incident postmortems — `/reef:health` shows coverage gaps; artifacts surface risks and decisions.
+     - **Living reference:** Run `/reef:update` after code changes to keep artifacts fresh. The reef compounds — each update costs less than the first build.
 
 ---
 

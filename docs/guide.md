@@ -42,7 +42,6 @@ Interactive, question-driven knowledge capture. This is where most real knowledg
 - Upgrades draft artifacts using the full API specs and ERDs from source extraction
 - Asks targeted questions based on gaps in existing artifacts
 - Creates or updates artifacts as knowledge accumulates
-- Always asks "What did I get wrong?" after writing
 
 **When to use:** After init. This is the main working session. Run it as many times as you want — each session deepens the reef further.
 
@@ -83,6 +82,18 @@ Read-only report. Shows coverage, freshness, and validation issues without chang
 | Contract | CON- | What do these systems agree on? |
 | Risk | RISK- | What could go wrong? |
 | Pattern | PAT- | What problem does this solve repeatedly? |
+
+## After Scuba — What Now?
+
+Once you've run scuba (even partially), the reef is useful. Here's what you can do with it:
+
+- **Feed it to your dev agents.** Point Claude Code, Cursor, or Copilot at the reef directory as context. Agents with reef artifacts make better decisions — they know your domain, not just your syntax.
+- **Onboard teammates.** Open the reef in Obsidian and let new team members explore the knowledge graph. Faster ramp-up than reading code cold or scheduling walkthrough meetings.
+- **Export as documentation.** Artifacts are structured markdown — copy them into Confluence, Notion, or a static site generator. The frontmatter and wikilinks translate cleanly.
+- **Prepare for reviews.** Before architecture reviews, compliance audits, or incident postmortems, run `/reef:health` to see coverage gaps and `/reef:test` to check if the reef answers your real questions.
+- **Keep it alive.** Run `/reef:update` after deploys or significant code changes. The reef compounds — each update costs a fraction of the initial build.
+
+You don't need to "finish" the reef to use it. A reef with 60% coverage that gets used is worth more than a 100% reef that sits idle.
 
 ## Tips
 

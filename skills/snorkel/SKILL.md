@@ -154,8 +154,8 @@ Generate artifacts guided by what you learned. Every service has a **mandatory m
 
 ### Cross-service artifacts (generate ALL of these)
 
-7. **CON-** — one per service pair. For N services, generate exactly N×(N-1)/2 contracts. Name both parties, describe what flows between them (or note "no detected integration"). This is a completeness requirement — do not generate "some" and move on.
-8. **GLOSSARY-** unified — one for the whole reef. Cross-service disambiguation. If you already have per-service glossaries, the unified glossary resolves conflicts and notes where the same term means different things.
+7. **CON-** — one per service pair. For N services, generate exactly N×(N-1)/2 contracts. Name both parties, describe what flows between them (or note "no detected integration"). This is a completeness requirement — do not generate "some" and move on. **Domain labeling:** Cross-system artifacts (CON- between services, entity comparisons, unified glossary) must use the project-level domain slug from `project.json`, not a single service's domain. This ensures cross-system artifacts are discoverable and don't create false coverage gaps.
+8. **GLOSSARY-** unified — one for the whole reef. Cross-service disambiguation (use the project-level domain slug from `project.json`). If you already have per-service glossaries, the unified glossary resolves conflicts and notes where the same term means different things.
 
 ### Conditional artifacts (generate when signal is present)
 

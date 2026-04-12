@@ -56,6 +56,18 @@ Then, in any project directory:
 
 **Deep** — Critical systems where shallow reading misses real behavior. Line-by-line tracing, 5+ Key Facts per artifact with precise citations. Reserve for areas where getting it wrong has consequences.
 
+## I Built a Reef — Now What?
+
+A reef is a living knowledge base. Once scuba completes (even partially), you can:
+
+- **Feed it to dev agents** — point Claude Code, Cursor, or Copilot at the reef directory as context so they understand your domain, not just your syntax
+- **Onboard teammates** — open in Obsidian, explore the knowledge graph, ramp up without scheduling walkthrough meetings
+- **Export as docs** — artifacts are structured markdown with frontmatter; copy into Confluence, Notion, or a static site
+- **Audit and review** — `/reef:health` for coverage gaps, `/reef:test` to check if the reef answers your real questions
+- **Keep it alive** — `/reef:update` after code changes; each update costs a fraction of the initial build
+
+See [docs/guide.md](docs/guide.md) for the full workflow.
+
 ## Domain Boundaries
 
 One reef covers one ecosystem — services that talk to each other. The sweet spot is **3-15 repos** that form a coherent domain. This is where Reef delivers the most value: complex enough that no one person holds the full picture, small enough that Reef can trace every cross-system connection.
