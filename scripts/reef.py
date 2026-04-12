@@ -1519,14 +1519,20 @@ def cmd_manifest(args) -> None:
     # Detect entities/concepts that appear in 2+ services with different structures.
     # These are high-confidence pattern candidates that can be auto-generated.
     if len(services) >= 2:
-        # Collect entity names per service
+        # Collect entity names per service (normalized to tokens for fuzzy matching)
         entities_per_service: dict[str, set[str]] = {}
+        # Also keep raw names for reporting
+        entities_raw_per_service: dict[str, dict[str, str]] = {}  # svc -> {normalized: raw}
         for svc_upper, ents in all_entities_by_service.items():
-            entities_per_service[svc_upper] = {
-                e["name"].lower().replace("_", " ") for e in ents if e.get("tier", 3) <= 2
-            }
+            entities_per_service[svc_upper] = set()
+            entities_raw_per_service[svc_upper] = {}
+            for e in ents:
+                if e.get("tier", 3) <= 2:
+                    raw = e["name"].lower().replace("_", " ")
+                    entities_per_service[svc_upper].add(raw)
+                    entities_raw_per_service[svc_upper][raw] = e["name"]
 
-        # Find entities that appear in 2+ services (cross-service divergence)
+        # --- Method 1: Exact match (original) ---
         from collections import Counter
         entity_service_count: dict[str, list[str]] = {}
         for svc_upper, names in entities_per_service.items():
@@ -1534,26 +1540,126 @@ def cmd_manifest(args) -> None:
                 entity_service_count.setdefault(name, []).append(svc_upper)
         shared_entities = {name: svcs for name, svcs in entity_service_count.items()
                           if len(svcs) >= 2}
-        for entity_name, svcs in shared_entities.items():
-            slug = entity_name.upper().replace(" ", "-")
+
+        # --- Method 2: Token-overlap matching ---
+        # "acquisition project" and "project" share the token "project"
+        # Match when a shorter name is a substring of a longer name,
+        # or when names share a significant token (>= 4 chars, not generic)
+        GENERIC_TOKENS = {"data", "type", "base", "info", "item", "list",
+                          "model", "record", "entry", "result", "event"}
+        all_svc_names = list(entities_per_service.keys())
+        for i, svc_a in enumerate(all_svc_names):
+            for svc_b in all_svc_names[i + 1:]:
+                for name_a in entities_per_service[svc_a]:
+                    for name_b in entities_per_service[svc_b]:
+                        if name_a == name_b:
+                            continue  # Already caught by exact match
+                        # Check substring: "project" in "acquisition project"
+                        is_substring = (name_a in name_b) or (name_b in name_a)
+                        # Check significant token overlap
+                        tokens_a = set(name_a.split())
+                        tokens_b = set(name_b.split())
+                        shared_tokens = (tokens_a & tokens_b) - GENERIC_TOKENS
+                        has_shared_token = any(len(t) >= 4 for t in shared_tokens)
+                        if is_substring or has_shared_token:
+                            # Use the shorter name as the concept name
+                            concept = name_a if len(name_a) <= len(name_b) else name_b
+                            key = f"{concept}|fuzzy"
+                            if key not in shared_entities:
+                                shared_entities[key] = []
+                            svcs_in = shared_entities[key]
+                            if svc_a not in svcs_in:
+                                svcs_in.append(svc_a)
+                            if svc_b not in svcs_in:
+                                svcs_in.append(svc_b)
+
+        # --- Method 3: Glossary-based divergence detection ---
+        # Read GLOSSARY-UNIFIED for cross-service disambiguation table
+        glossary_path = reef / "artifacts" / "glossary" / "glossary-unified.md"
+        if glossary_path.is_file():
+            try:
+                glossary_text = glossary_path.read_text(encoding="utf-8")
+                # Parse the disambiguation table: | Term | DAIP | CDM | CTL | RDP |
+                in_disambig = False
+                svc_columns: list[str] = []
+                for gline in glossary_text.split("\n"):
+                    stripped = gline.strip()
+                    if "ambiguous" in stripped.lower() or "disambiguation" in stripped.lower():
+                        in_disambig = True
+                        continue
+                    if in_disambig and stripped.startswith("## "):
+                        in_disambig = False
+                        continue
+                    if not in_disambig:
+                        continue
+                    if stripped.startswith("|"):
+                        cells = [c.strip() for c in stripped.split("|")]
+                        cells = [c for c in cells if c]
+                        if not cells:
+                            continue
+                        # Header row: detect service column names
+                        if any(c.lower() in ("term", "concept") for c in cells):
+                            svc_columns = [c.upper() for c in cells[1:]]
+                            continue
+                        # Separator row
+                        if set(cells[0].replace("-", "").strip()) <= {" ", ""}:
+                            continue
+                        # Data row: term is first cell, services with non-empty definitions
+                        term = cells[0].lower().strip()
+                        if not term or len(cells) < 2:
+                            continue
+                        active_svcs = []
+                        for idx, cell in enumerate(cells[1:]):
+                            if idx < len(svc_columns) and cell.strip() not in ("", "--", "-", "n/a"):
+                                active_svcs.append(svc_columns[idx])
+                        if len(active_svcs) >= 2:
+                            key = f"{term}|glossary"
+                            if key not in shared_entities:
+                                shared_entities[key] = active_svcs
+            except Exception:
+                pass
+
+        # Deduplicate and plan PAT- artifacts
+        planned_pat_concepts: set[str] = set()
+        for raw_key, svcs in shared_entities.items():
+            if len(svcs) < 2:
+                continue
+            # Normalize: strip |fuzzy or |glossary suffix for the concept name
+            concept = raw_key.split("|")[0].strip()
+            if concept in planned_pat_concepts:
+                continue
+            planned_pat_concepts.add(concept)
+            slug = concept.upper().replace(" ", "-")
             svc_pair = "-".join(sorted(svcs[:2]))
             aid = f"PAT-{svc_pair}-{slug}-COMPARISON"
-            plan(aid, "pattern", source="cross-service-divergence",
-                 note=f"Entity '{entity_name}' appears in {', '.join(svcs)} with different structures")
+            source_type = "glossary" if "|glossary" in raw_key else (
+                "fuzzy-match" if "|fuzzy" in raw_key else "exact-match")
+            plan(aid, "pattern", source=f"cross-service-divergence ({source_type})",
+                 note=f"Concept '{concept}' appears in {', '.join(svcs)} with different structures/meanings")
 
         # Detect repeated architectural patterns across services (error handling, auth, etc.)
-        # by checking which operational PROC- types exist across 2+ services
-        operational_patterns = {}
+        # Check both existing artifacts AND manifest-planned operational PROC-
+        operational_patterns: dict[str, list[str]] = {}
+        # From existing artifacts
         for _, fm in artifacts:
             aid = fm.get("id", "").upper()
             if aid.startswith("PROC-") and any(
                 aid.endswith(suffix) for suffix in ("-ERROR-HANDLING", "-AUTH", "-BACKGROUND-TASKS")
             ):
-                # Extract the pattern type
                 for suffix in ("-ERROR-HANDLING", "-AUTH", "-BACKGROUND-TASKS"):
                     if aid.endswith(suffix):
                         pat_type = suffix.lstrip("-")
                         operational_patterns.setdefault(pat_type, []).append(aid)
+                        break
+        # From manifest-planned items (Checklist D planned above but not yet on disk)
+        for entry in planned:
+            aid = entry["id"].upper()
+            if entry["type"] == "process" and entry.get("source") == "checklist-D":
+                for suffix in ("-ERROR-HANDLING", "-AUTH", "-BACKGROUND-TASKS"):
+                    if aid.endswith(suffix):
+                        pat_type = suffix.lstrip("-")
+                        if aid not in operational_patterns.get(pat_type, []):
+                            operational_patterns.setdefault(pat_type, []).append(aid)
                         break
         for pat_type, proc_ids in operational_patterns.items():
             if len(proc_ids) >= 2:
@@ -1562,6 +1668,129 @@ def cmd_manifest(args) -> None:
                 if aid not in existing_ids:
                     plan(aid, "pattern", source="cross-service-pattern",
                          note=f"Same pattern ({pat_type}) found in {len(proc_ids)} services: {', '.join(proc_ids)}")
+
+    # --- Checklist E: FE/BE contracts (sub-step 3.5) ---
+    # For services with both frontend and backend repos, plan CON- artifacts
+    frontend_signals = {"frontend", "office", "admin", "ui", "web", "app"}
+    backend_signals = {"backend", "server", "api", "authenticator", "gateway", "pipeline"}
+    for svc in services:
+        svc_upper = svc["name"].upper()
+        svc_sources = svc.get("sources", [])
+        fe_repos = [s for s in svc_sources
+                    if any(sig in s.lower() for sig in frontend_signals)]
+        be_repos = [s for s in svc_sources
+                    if any(sig in s.lower() for sig in backend_signals)]
+        if fe_repos and be_repos:
+            for fe in fe_repos:
+                fe_slug = fe.upper().replace("-", "-")
+                aid = f"CON-{svc_upper}-FE-BE-{fe_slug}"
+                plan(aid, "contract", source="checklist-E",
+                     note=f"Frontend-backend contract: {fe} -> backend")
+
+    # --- Checklist F: Intra-service data contracts (sub-step 3.7b) ---
+    # Scan source index for signal files indicating internal contracts
+    intra_contract_signals = {
+        "hash": "Identifier/hash conventions",
+        "identifier": "Identifier conventions",
+        "id_gen": "ID generation",
+        "checksum": "Checksum conventions",
+        "export": "Export/serialization formats",
+        "serializer": "Export/serialization formats",
+        "path_builder": "Path construction conventions",
+        "storage_path": "Path construction conventions",
+    }
+    source_index_path = reef / ".reef" / "source-index.json"
+    if source_index_path.is_file():
+        try:
+            source_index_raw = json.loads(source_index_path.read_text(encoding="utf-8"))
+            source_index = source_index_raw.get("sources", source_index_raw)
+            for svc in services:
+                svc_upper = svc["name"].upper()
+                svc_source_names = set(svc.get("sources", []))
+                found_signals: dict[str, list[str]] = {}  # signal_type -> [file_paths]
+                for src_name, src_data in source_index.items():
+                    if src_name not in svc_source_names:
+                        continue
+                    files = src_data.get("files", [])
+                    if isinstance(files, dict):
+                        file_list = list(files.keys())
+                    elif isinstance(files, list):
+                        file_list = files
+                    else:
+                        continue
+                    for fpath in file_list:
+                        fpath_lower = fpath.lower()
+                        fname = fpath_lower.rsplit("/", 1)[-1] if "/" in fpath_lower else fpath_lower
+                        for signal_key, signal_desc in intra_contract_signals.items():
+                            if signal_key in fname:
+                                found_signals.setdefault(signal_desc, []).append(fpath)
+                                break
+                for signal_desc, files in found_signals.items():
+                    if len(files) >= 1:
+                        slug = signal_desc.upper().replace(" ", "-").replace("/", "-")
+                        aid = f"CON-{svc_upper}-{slug}"
+                        plan(aid, "contract", source="checklist-F-intra",
+                             note=f"Intra-service contract: {signal_desc} ({len(files)} signal files)")
+        except Exception:
+            pass
+
+    # --- Checklist F2: Multi-app comparison PROC- (sub-step 3.14) ---
+    # For services with multiple sub-apps sharing entities, plan comparison artifacts
+    for svc in services:
+        svc_upper = svc["name"].upper()
+        sub_apps = svc.get("sub_apps", [])
+        # Also detect multi-app from schemas: if service has 2+ sub-schema dirs
+        schema_svc_dir = reef / "sources" / "schemas" / svc["name"].lower()
+        schema_subs = []
+        if schema_svc_dir.is_dir():
+            schema_subs = [d.name for d in schema_svc_dir.iterdir()
+                           if d.is_dir() and (d / "schema.md").is_file()]
+        app_list = sub_apps if sub_apps else schema_subs
+        # Filter to application-level sub-apps (not libraries)
+        app_level = [a for a in app_list
+                     if a.lower() not in ("auth", "backend-core", "cc-export",
+                                          "cc-primitive", "cc-schema",
+                                          "cc-test-data-generator", "rpc")]
+        if len(app_level) >= 2:
+            # Plan one comparison artifact for the whole service
+            aid = f"PROC-{svc_upper}-MULTI-APP-COMPARISON"
+            plan(aid, "process", source="checklist-F2",
+                 note=f"Multi-app comparison: {', '.join(app_level)}")
+            # Also plan pairwise comparisons for apps with shared schemas
+            if len(schema_subs) >= 2:
+                compared = set()
+                for ia, app_a in enumerate(schema_subs):
+                    for app_b in schema_subs[ia + 1:]:
+                        pair_key = f"{app_a}-{app_b}"
+                        if pair_key in compared:
+                            continue
+                        compared.add(pair_key)
+                        a_slug = app_a.upper().replace("-", "-")
+                        b_slug = app_b.upper().replace("-", "-")
+                        aid = f"PROC-{svc_upper}-{a_slug}-VS-{b_slug}"
+                        plan(aid, "process", source="checklist-F2",
+                             note=f"Schema comparison: {app_a} vs {app_b}")
+
+    # --- Checklist G: SCH- field lineage (sub-step 3.16) ---
+    # For services with ingestion/ETL/transform logic, plan field lineage artifacts
+    lineage_signal_keywords = {"ingestion", "ingest", "etl", "transform", "pipeline",
+                               "import", "sync", "migration", "loader"}
+    for svc in services:
+        svc_upper = svc["name"].upper()
+        svc_desc = svc.get("description", "").lower()
+        svc_source_names = set(svc.get("sources", []))
+        has_lineage_signal = any(kw in svc_desc for kw in lineage_signal_keywords)
+        # Also check source names
+        if not has_lineage_signal:
+            has_lineage_signal = any(
+                any(kw in src.lower() for kw in lineage_signal_keywords)
+                for src in svc_source_names
+            )
+        if has_lineage_signal:
+            # Plan one field lineage artifact per service with ETL signals
+            aid = f"SCH-{svc_upper}-FIELD-LINEAGE"
+            plan(aid, "schema", source="checklist-G",
+                 note="Field lineage tracing for ingestion/ETL entities")
 
     # --- Checklist C: Individual PROC- from catalog/inventory artifacts ---
     # Generalised: works for flow catalogs, event catalogs, job catalogs, etc.

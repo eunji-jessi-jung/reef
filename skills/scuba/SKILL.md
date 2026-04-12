@@ -103,22 +103,51 @@ First, check if `.reef/scuba-manifest.json` already exists from a previous run:
 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/reef.py manifest --reef <reef-root>
 ```
 
-This command handles everything programmatically:
+This command handles the following programmatically — **do NOT duplicate this work manually:**
+
+- **Checklist A:** SYS- updates (one per service)
+- **Checklist B2:** PAT- from cross-service divergence — three detection methods:
+  - Exact entity name match across services
+  - Fuzzy token-overlap matching (e.g., "project" matches "acquisition project")
+  - Glossary-based detection (reads GLOSSARY-UNIFIED disambiguation table)
+  - Repeated operational patterns across services (AUTH, ERROR-HANDLING, etc.)
+- **Checklist C:** Individual PROC- from catalog/inventory artifacts
+- **Checklist D:** Operational PROC- per service (AUTH, ERROR-HANDLING)
+- **Checklist E:** FE/BE contracts (detects frontend/backend repo pairs per service)
+- **Checklist F (intra):** Intra-service data contracts (scans source index for hash, export, identifier, checksum, serializer, storage signals)
+- **Checklist F2:** Multi-app comparison PROC- (pairwise schema comparisons for services with multiple sub-apps)
+- **Checklist G:** SCH- field lineage (detects services with ingestion/ETL keywords)
 - Entity tiering (Tier 1/2/3 classification, multi-app dedup)
-- Checklists A-D (SYS- updates, flow catalog gaps, operational PROC-, auth/error-handling)
 - PROC count floor validation (`Tier 1 count + services × 3`)
 - CON- service pairs, RISK-, DEC-, GLOSSARY- per service
 
 The output includes `entity_tiering` (per-service Tier 1/2/3 counts and names) and `proc_floor` (floor check result). Report these to the user.
 
-**After running the command, augment the manifest manually for items code cannot detect:**
+### MANDATORY — Verify the manifest before presenting (do NOT skip)
 
-- **Checklist B — SCH- field lineage:** For services with ingestion/ETL/transform logic, plan one SCH- field lineage artifact per entity group. Common signals: `*_hash` fields, snapshot tables, computed fields.
-- **Checklist E — Partial questions:** Read `.reef/questions.json`. For every `status: "partial"` question, check if a planned artifact addresses it. Add missing ones.
-- **Checklist F — Cross-system:** Include PAT- candidates from the manifest (auto-detected cross-service divergences and repeated architectural patterns). Plan PROC- multi-app comparisons and CON- entity comparisons if needed.
-- **Checklist G — Domain labeling:** Cross-system artifacts (CON- between services, GLOSSARY-UNIFIED, entity comparisons) must use the project-level domain slug from `project.json`.
+The script handles the bulk of manifest generation, but you MUST verify its output before presenting to the user. Run through this checklist:
 
-Add discovered items to the manifest's `planned` array and re-save `.reef/scuba-manifest.json`.
+1. **PAT- count check.** If the reef has 2+ services and the manifest has fewer than 3 PAT- artifacts, something is wrong. Check: does GLOSSARY-UNIFIED have a disambiguation table? Are entity names parseable from schema.md files? If the script missed divergences you can see in the glossary, add them manually.
+
+2. **CON- count check.** The manifest should have at minimum: N×(N-1)/2 service-pair contracts + FE/BE contracts (one per frontend repo) + intra-service contracts (from source index scanning). If CON- count equals exactly N×(N-1)/2 with nothing else, the FE/BE and intra-service detection may have failed — check the output.
+
+3. **PROC floor check.** The script reports `floor_met: true/false`. If false, identify the gap and add missing PROC- items (flow catalogs for non-pipeline services, multi-app comparisons, infrastructure PROC-).
+
+4. **Partial questions.** Read `.reef/questions.json`. For every `status: "partial"` question, check if a planned artifact addresses it. Add missing ones.
+
+5. **Domain labeling.** Cross-system artifacts (CON- between services, GLOSSARY-UNIFIED, entity comparisons, PAT-) must use the project-level domain slug from `project.json`, not a single service's domain.
+
+**If you add items, append them to the manifest's `planned` array and re-save `.reef/scuba-manifest.json`.**
+
+### Minimum manifest size gate
+
+Before presenting the manifest to the user, check the total against this formula:
+
+```
+minimum = (services × 6) + (services × (services-1) / 2) + (PAT candidates from glossary)
+```
+
+For a 4-service reef with 5 glossary disambiguation terms, the minimum is ~34. If the actual manifest total is below this minimum, **do not present it** — investigate what the script missed and augment first. A thin manifest produces a thin reef, and the user will rightfully be frustrated.
 
 **ANTI-CONSOLIDATION RULES (CRITICAL):**
 
