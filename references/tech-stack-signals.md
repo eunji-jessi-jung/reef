@@ -52,6 +52,22 @@ Reference tables for identifying API frameworks, ORMs, and package managers from
 
 **This is critical for tier 2 (runtime extraction).** Running bare `python3` will fail for most repos because dependencies are installed in the project's virtual environment, not system Python. Always use the package manager's run command.
 
+## Infrastructure / Storage Indicators
+
+| Pattern | Signal | What to extract |
+|---------|--------|-----------------|
+| GCS | `google.cloud.storage` or `gcsfs` in deps, `gs://` in code | Bucket names, path templates, naming conventions |
+| AWS S3 | `boto3` or `s3fs` in deps, `s3://` in code | Bucket names, path templates, key patterns |
+| Azure Blob | `azure-storage-blob` in deps | Container names, path templates |
+| MinIO | `minio` in deps | Bucket configs |
+| Celery | `celery` in deps | Task definitions, queues, routing |
+| RabbitMQ | `pika` or `kombu` in deps | Queue/exchange names, routing keys |
+| Kafka | `confluent-kafka` or `kafka-python` in deps | Topics, consumer groups, schemas |
+| Redis (as queue) | `redis` or `rq` in deps + queue usage patterns | Queue names, pub/sub channels |
+| Docker Compose | `docker-compose.yml` or `compose.yaml` | Service topology, ports, volumes, dependencies |
+| Kubernetes | `kubernetes/`, `k8s/`, `helm/`, `charts/` dirs | Resources, configs, service mesh |
+| Env config | `.env.example`, `.env.template` | Configuration surface, required secrets |
+
 ## Multi-App Repos
 
 Some repos contain multiple applications (e.g., an Nx monorepo with `applications/gateway/`, `applications/ledger/`). Detect each sub-application separately. Check for per-app dependency files and entry points. The package manager may be at the repo root (shared) or per-app.

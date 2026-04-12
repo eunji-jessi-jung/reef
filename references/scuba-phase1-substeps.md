@@ -39,23 +39,27 @@ For each service with an extracted ERD in `sources/schemas/{service}/{sub}/schem
 
 ## 3.3 — Entity definition and lifecycle artifacts
 
-Generate a PROC- artifact for every core entity listed in the manifest. **Do not skip entities.**
+Generate a PROC- artifact for every **Tier 1** entity listed in the manifest. **Do not skip Tier 1 entities.**
+
+Only Tier 1 entities (those with status/state fields, complex business logic, or aggregate relationships) get their own PROC- artifact. Tier 2 entities are documented within their parent's artifact under a "Related Entities" subsection. Tier 3 entities (join tables, lookups, views) are skipped entirely.
+
+**Multi-app deduplication:** When a service has parallel sub-apps with near-identical schemas (e.g., regional or product-line variants), write lifecycle artifacts at the SERVICE level (e.g., `PROC-PAYMENTS-ORDER-LIFECYCLE`), not per-app. Note app-specific divergences inline. Separate comparison artifacts handle the detailed diff.
 
 **Naming:** `PROC-{SERVICE}-{ENTITY}-LIFECYCLE` (e.g., `PROC-PAYMENTS-ORDER-LIFECYCLE`).
 
 **Template:** Follow `references/templates/process-entity-lifecycle.md` exactly.
 
-For each core entity:
+For each Tier 1 entity:
 
 1. **Read the source code** — find the model/schema definition file. Read fields, relationships, validators, business logic.
 2. **Write the PROC- artifact** following the template:
    - **Fields table**: focus on business-meaningful fields, not a raw dump
-   - **Relationships**: which other entities this connects to, with cardinality
+   - **Relationships**: which other entities this connects to, with cardinality. Mention Tier 2 child entities here.
    - **Creation path**: how instances come into existence (API endpoint, background job, migration)
    - **States**: if the entity has a status/state field, include a Mermaid `stateDiagram-v2` showing all states and transitions. If no status field, document the implicit lifecycle (created → used → archived/deleted).
    - **Agent Guidance section (REQUIRED)**: when to consult this artifact, common pitfalls, related artifacts to read together
 
-**Entity completeness check:** After generating all entity PROC- for a service, compare against the schema's entity list. If any core entity was skipped, go back and generate it.
+**Entity completeness check:** After generating all entity PROC- for a service, compare against the manifest's Tier 1 list. If any Tier 1 entity was skipped, go back and generate it.
 
 ## 3.4 — Authentication and authorization patterns
 
@@ -165,10 +169,24 @@ For each service with pipeline/orchestration/job systems in the manifest:
 
 1. Enumerate all flows: Prefect `@flow`/`@task`, Celery `@app.task`, Airflow DAGs, background job classes, status progressions.
 2. For each flow: trigger, processing steps, terminal states, error/retry behavior.
-3. Include a **Mermaid `graph` diagram** showing flow dependencies.
-4. **Output:** PROC-{SERVICE}-FLOW-CATALOG artifact. Template: `references/templates/process-flow-catalog.md`.
+3. **If `sources/infra/{service}/storage.md` exists:** Cross-reference flows with storage path patterns. Document which flows read from / write to which cloud storage paths. This is often the primary data contract for pipeline services — the path convention defines the data model more than any database schema.
+4. **If `sources/infra/{service}/queues.md` exists:** Cross-reference flows with queue/task definitions. Document which flows publish to / consume from which queues.
+5. Include a **Mermaid `graph` diagram** showing flow dependencies, annotated with storage I/O where applicable.
+6. **Output:** PROC-{SERVICE}-FLOW-CATALOG artifact. Template: `references/templates/process-flow-catalog.md`.
 
 Skip for services with no pipeline/orchestration patterns.
+
+## 3.13b — Infrastructure-driven PROC- and SCH- artifacts
+
+For services where `sources/infra/{service}/storage.md` exists and the service has **fewer than 5 Tier 1 entities** (i.e., the traditional schema extraction was thin):
+
+1. **Storage path conventions as data schema:** If the storage.md reveals structured path patterns with meaningful segments (e.g., `{project_id}/{dataset_id}/{split}/{filename}`), these path segments ARE the data model for this service. Write a SCH- artifact documenting the storage schema: path segments, their types/enums, naming conventions, and the implicit entity hierarchy.
+
+2. **Data flow PROC- artifacts:** If storage patterns show data moving between buckets or path prefixes (input → processing → output), write PROC- artifacts for each major data flow. Cross-reference with flow catalog entries.
+
+3. **Configuration surface as operational knowledge:** If `sources/infra/{service}/runtime.md` reveals a complex env var surface (10+ variables), write a PROC- operational artifact documenting the configuration model — what each group of variables controls, which are required for different environments, common misconfiguration patterns visible in the code.
+
+This sub-step exists because pipeline/orchestration services are systematically under-documented by the traditional API+ERD extraction path. Their complexity lives in storage conventions, flow composition, and configuration — not in database tables and REST endpoints.
 
 ## 3.14 — PROC- multi-app comparison pairs
 

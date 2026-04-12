@@ -94,6 +94,11 @@ Process artifacts one at a time. For each affected artifact:
   - **Blocking:** YAML parseable, required fields present, id matches filename, valid enums, freshness_note not empty, Key Facts present (except Glossary).
   - **Warning:** relates_to targets exist, source refs resolve, body sections present, Related matches frontmatter.
 - Frontmatter field order, determinism rules, and body structure must follow the artifact contract.
+- **Lint immediately after writing:**
+  ```bash
+  python3 ${CLAUDE_PLUGIN_ROOT}/scripts/reef.py lint --reef <reef-root>
+  ```
+  Filter to errors for this artifact's ID. Fix any errors before moving on.
 - Run snapshot:
   ```bash
   python3 ${CLAUDE_PLUGIN_ROOT}/scripts/reef.py snapshot <artifact-id> --reef <reef-root>

@@ -85,9 +85,17 @@ This step prevents subtle hallucination where artifacts drift from established d
 
 Report any warnings to the user after writing.
 
-### 7. Post-write commands
+### 7. Post-write lint and commands
 
-Run these in order after the artifact file is written and accepted:
+**Immediately after writing the artifact file, lint it:**
+
+```bash
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/reef.py lint --reef <reef-root>
+```
+
+Parse the JSON output, filter to errors for this artifact's ID. If errors are found, fix them now (ID casing, missing fields, filename mismatch, wikilink sync — see `/reef:lint` auto-fix rules). This catches format errors at write-time, not at the end of a session.
+
+Then run the remaining post-write commands:
 
 ```bash
 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/reef.py snapshot <artifact-id> --reef <reef-root>

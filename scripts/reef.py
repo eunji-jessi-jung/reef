@@ -1128,19 +1128,72 @@ def cmd_audit(args) -> None:
 
 
 def _extract_entities_from_schema(schema_path: Path) -> list[dict]:
-    """Extract entity names from a schema.md file. Returns list of {name, is_junction}."""
+    """Extract entities from a schema.md file by parsing Mermaid ERDs and ## Tables/Collections.
+
+    Returns list of dicts with keys:
+      name, tier (1/2/3), fields_count, fk_count, has_status, reason
+    """
     try:
         text = schema_path.read_text(encoding="utf-8")
     except Exception:
         return []
 
-    entities = []
+    # --- Parse Mermaid erDiagram blocks ---
+    raw_entities: dict[str, dict] = {}  # name -> {fields: [], fks: [], has_status: bool}
+    in_mermaid = False
+    current_entity = None
+
+    for line in text.split("\n"):
+        stripped = line.strip()
+        if stripped.startswith("```mermaid"):
+            in_mermaid = True
+            continue
+        if stripped.startswith("```") and in_mermaid:
+            in_mermaid = False
+            current_entity = None
+            continue
+        if not in_mermaid:
+            continue
+        if stripped.startswith("erDiagram"):
+            continue
+
+        # Relationship lines (e.g., "contract_data ||--o{ contract : has")
+        if any(op in stripped for op in ("||", "}o", "}|", "o{", "|{", "--")):
+            continue
+
+        # Entity opening: "entity_name {"
+        m = re.match(r"^(\w+)\s*\{", stripped)
+        if m:
+            current_entity = m.group(1)
+            if current_entity not in raw_entities:
+                raw_entities[current_entity] = {"fields": [], "fks": [], "has_status": False}
+            continue
+
+        # Closing brace
+        if stripped == "}":
+            current_entity = None
+            continue
+
+        # Field line inside entity: "TYPE name [PK|FK] [comment]"
+        if current_entity and stripped:
+            parts = stripped.split()
+            if len(parts) >= 2:
+                field_type = parts[0]
+                field_name = parts[1]
+                rest = " ".join(parts[2:]).upper()
+                is_fk = "FK" in rest
+                is_pk = "PK" in rest
+
+                raw_entities[current_entity]["fields"].append(field_name)
+                if is_fk:
+                    raw_entities[current_entity]["fks"].append(field_name)
+                if field_name.lower() in ("status", "state", "current_run_state",
+                                          "current_state", "workflow_state"):
+                    raw_entities[current_entity]["has_status"] = True
+
+    # --- Also try ## Tables / ## Collections heading format (fallback) ---
     in_tables = False
-
-    # Patterns that indicate non-core entities (junction, lookup, derived, auxiliary)
-    NON_CORE_SUFFIXES = ("_data", "_link", "_alias", "_mv", "_event", "_summary", "_log")
-    NON_CORE_NAMES = {"ethnicity", "race", "gender", "country", "language", "timezone", "currency"}
-
+    current_heading = None
     for line in text.split("\n"):
         stripped = line.strip()
         if stripped.startswith("## Tables") or stripped.startswith("## Collections"):
@@ -1150,20 +1203,62 @@ def _extract_entities_from_schema(schema_path: Path) -> list[dict]:
             in_tables = False
             continue
         if in_tables and stripped.startswith("### "):
-            raw_name = stripped[4:].strip()
-            # Clean: strip parenthetical annotations like "UserDocument (AdminUser / RegularUser)"
-            clean_name = raw_name.split("(")[0].strip()
-            # Clean: take first name before " / " if multiple variants
-            clean_name = clean_name.split(" / ")[0].strip()
+            raw_name = stripped[4:].strip().split("(")[0].strip().split(" / ")[0].strip()
+            name_lower = raw_name.lower().replace(" ", "_")
+            if name_lower not in {k.lower() for k in raw_entities}:
+                raw_entities[raw_name] = {"fields": [], "fks": [], "has_status": False}
 
-            name_lower = clean_name.lower().replace(" ", "_")
-            is_junction = (
-                "__" in raw_name or
-                any(name_lower.endswith(suffix) for suffix in NON_CORE_SUFFIXES) or
-                name_lower in NON_CORE_NAMES or
-                name_lower.endswith("_flat_mv")  # materialized views
-            )
-            entities.append({"name": clean_name, "is_junction": is_junction})
+    # --- Classify into tiers ---
+    SYSTEM_FIELDS = {"id", "_id", "created_at", "updated_at", "deleted_at"}
+    JUNCTION_PATTERN = re.compile(r"__")
+    LOOKUP_NAMES = {"ethnicity", "race", "gender", "country", "language",
+                    "timezone", "currency", "tag"}
+    EVENT_LOG_SUFFIXES = ("_logs", "_log", "_events", "_event", "_states",
+                          "_history", "_audit")
+    MV_SUFFIXES = ("_mv", "_flat_mv")
+
+    entities = []
+    for name, info in raw_entities.items():
+        name_lower = name.lower()
+        business_fields = [f for f in info["fields"]
+                           if f.lower() not in SYSTEM_FIELDS]
+        fk_count = len(info["fks"])
+        has_status = info["has_status"]
+        field_count = len(business_fields)
+
+        # Tier 3: join tables, lookups, materialized views
+        if JUNCTION_PATTERN.search(name):
+            tier, reason = 3, "junction table"
+        elif any(name_lower.endswith(s) for s in MV_SUFFIXES):
+            tier, reason = 3, "materialized view"
+        elif name_lower in LOOKUP_NAMES and field_count <= 3:
+            tier, reason = 3, "lookup table"
+        elif any(name_lower.endswith(s) for s in EVENT_LOG_SUFFIXES):
+            tier, reason = 2, "event log/audit table — document in parent lifecycle"
+        elif field_count <= 2 and fk_count == 0 and not has_status:
+            tier, reason = 3, "trivial entity"
+        # Data-companion entities: Tier 2 unless very complex
+        elif name_lower.endswith("_data") and field_count <= 10:
+            tier, reason = 2, "data companion — document in parent lifecycle"
+        # Tier 1: entities with real lifecycles
+        elif has_status:
+            tier, reason = 1, "has status/state field"
+        elif field_count > 5 and fk_count >= 1:
+            tier, reason = 1, f"complex ({field_count} fields, {fk_count} FKs)"
+        elif fk_count >= 3:
+            tier, reason = 1, f"highly connected ({fk_count} FKs)"
+        # Tier 2: connected but no independent lifecycle
+        else:
+            tier, reason = 2, "connected but no independent lifecycle"
+
+        entities.append({
+            "name": name,
+            "tier": tier,
+            "fields_count": field_count,
+            "fk_count": fk_count,
+            "has_status": has_status,
+            "reason": reason,
+        })
 
     return entities
 
@@ -1222,27 +1317,66 @@ def cmd_manifest(args) -> None:
                 continue
             plan(aid, "schema", source=str(schema_path.relative_to(reef)))
 
-            # Extract entities for PROC- planning
+            # Extract entities for PROC- planning (with tiering)
             entities = _extract_entities_from_schema(schema_path)
             svc_key = parts[0].upper()
             if svc_key not in all_entities_by_service:
                 all_entities_by_service[svc_key] = []
             for ent in entities:
-                all_entities_by_service[svc_key].append({
-                    "name": ent["name"],
-                    "is_junction": ent["is_junction"],
-                    "schema_source": str(schema_path.relative_to(reef)),
-                })
+                ent["schema_source"] = str(schema_path.relative_to(reef))
+                all_entities_by_service[svc_key].append(ent)
 
-    # 3. PROC-entity lifecycles (core entities only)
-    for svc_upper, entities in all_entities_by_service.items():
-        core_entities = [e for e in entities if not e["is_junction"]]
-        for ent in core_entities:
-            # Normalize entity name: snake_case -> UPPER-CASE
-            ent_slug = ent["name"].upper().replace("_", "-")
-            aid = f"PROC-{svc_upper}-{ent_slug}-LIFECYCLE"
-            plan(aid, "process", entity=ent["name"],
-                 source=ent["schema_source"])
+    # 3. PROC-entity lifecycles (Tier 1 only, with multi-app dedup)
+    #
+    # Multi-app dedup: when a service has multiple sub-schemas (e.g., a service
+    # with regional or product-line variants) and the same entity name appears
+    # in multiple sub-schemas, plan ONE lifecycle at the SERVICE level
+    # (e.g., PROC-PAYMENTS-ORDER-LIFECYCLE), not one per sub-app.
+    #
+    # Entity tiering summary is emitted in the output for Claude to report.
+    tiering_report = {}
+    all_tier1_count = 0
+
+    for svc in services:
+        svc_upper = svc["name"].upper()
+        svc_sources = [s.upper() for s in svc.get("sources", [])]
+
+        # Collect entities across all sub-schemas for this service
+        svc_entities: dict[str, dict] = {}  # entity_name_lower -> best entity info
+        for schema_key, entities in all_entities_by_service.items():
+            # Match schema_key to service (schema keys are uppercase service names)
+            if schema_key != svc_upper:
+                continue
+            for ent in entities:
+                name_lower = ent["name"].lower().replace(" ", "_")
+                existing = svc_entities.get(name_lower)
+                if existing is None:
+                    svc_entities[name_lower] = ent
+                else:
+                    # Keep the one with more fields (better for tiering)
+                    if ent.get("fields_count", 0) > existing.get("fields_count", 0):
+                        svc_entities[name_lower] = ent
+
+        tier_counts = {1: 0, 2: 0, 3: 0}
+        tier1_names = []
+        for name_lower, ent in svc_entities.items():
+            tier = ent.get("tier", 2)
+            tier_counts[tier] = tier_counts.get(tier, 0) + 1
+            if tier == 1:
+                tier1_names.append(ent["name"])
+                ent_slug = ent["name"].upper().replace("_", "-").replace(" ", "-")
+                aid = f"PROC-{svc_upper}-{ent_slug}-LIFECYCLE"
+                plan(aid, "process", entity=ent["name"],
+                     source=ent.get("schema_source", ""),
+                     tier=1)
+
+        all_tier1_count += tier_counts[1]
+        tiering_report[svc_upper] = {
+            "tier1": tier_counts[1],
+            "tier2": tier_counts[2],
+            "tier3": tier_counts[3],
+            "tier1_entities": tier1_names,
+        }
 
     # 4. CON- service pairs (combinatorial)
     n = len(services)
@@ -1288,7 +1422,6 @@ def cmd_manifest(args) -> None:
 
     # 9. SCH- per-collection (for document store services with 3+ collections)
     for svc_upper, entities in all_entities_by_service.items():
-        # Check if any schema for this service mentions "Collections" (MongoDB/document store)
         doc_store_entities = []
         for ent in entities:
             schema_text = ""
@@ -1296,16 +1429,66 @@ def cmd_manifest(args) -> None:
                 schema_text = (reef / ent["schema_source"]).read_text(encoding="utf-8")
             except Exception:
                 pass
-            if "## Collections" in schema_text and not ent["is_junction"]:
+            if "## Collections" in schema_text and ent.get("tier", 2) <= 2:
                 doc_store_entities.append(ent)
 
         if len(doc_store_entities) >= 3:
             for ent in doc_store_entities:
-                ent_slug = ent["name"].upper().replace("_", "-")
+                ent_slug = ent["name"].upper().replace("_", "-").replace(" ", "-")
                 aid = f"SCH-{svc_upper}-COLLECTION-{ent_slug}"
                 plan(aid, "schema", entity=ent["name"],
                      source=ent["schema_source"],
                      note="Per-collection schema for document store")
+
+    # --- Checklist A: SYS- updates (one per service) ---
+    for svc in services:
+        aid = f"SYS-{svc['name'].upper()}"
+        if aid in existing_ids:
+            plan(aid, "system", source="checklist-A",
+                 note="SYS- deepening: add dependencies, Does NOT Own, behavior highlights, runtime components")
+
+    # --- Checklist C: Individual flow PROC- from existing flow catalogs ---
+    flow_catalog_dir = reef / "artifacts" / "processes"
+    if flow_catalog_dir.is_dir():
+        for fpath in flow_catalog_dir.iterdir():
+            if "flow-catalog" in fpath.name and fpath.suffix == ".md":
+                try:
+                    catalog_text = fpath.read_text(encoding="utf-8")
+                except Exception:
+                    continue
+                # Extract service prefix from filename: proc-pipeline-flow-catalog.md -> PIPELINE
+                fname_parts = fpath.stem.replace("proc-", "").replace("-flow-catalog", "")
+                svc_prefix = fname_parts.upper()
+                # Find flow names referenced in the catalog (lines with flow- pattern)
+                for line in catalog_text.split("\n"):
+                    m = re.search(r"\[\[PROC-" + svc_prefix + r"-FLOW-([A-Z0-9-]+)\]\]", line, re.IGNORECASE)
+                    if m:
+                        flow_name = m.group(1).upper()
+                        aid = f"PROC-{svc_prefix}-FLOW-{flow_name}"
+                        plan(aid, "process", source="checklist-C",
+                             note="Individual flow from flow catalog")
+
+    # --- Checklist D: Operational PROC- per service ---
+    operational_types = [
+        ("AUTH", "Authentication and authorization patterns"),
+        ("ERROR-HANDLING", "Error handling patterns"),
+    ]
+    for svc in services:
+        svc_upper = svc["name"].upper()
+        for op_suffix, op_note in operational_types:
+            aid = f"PROC-{svc_upper}-{op_suffix}"
+            plan(aid, "process", source="checklist-D", note=op_note)
+
+    # --- PROC count floor check ---
+    # Count both planned PROC- and existing PROC- artifacts not in the manifest
+    proc_planned = sum(1 for e in planned if e["type"] == "process")
+    proc_existing = sum(1 for eid in existing_ids if eid.startswith("PROC-"))
+    proc_in_manifest = sum(1 for e in planned
+                           if e["type"] == "process" and e["id"].upper() in existing_ids)
+    # Total = new planned + existing (avoid double-counting updates)
+    proc_total = proc_planned + proc_existing - proc_in_manifest
+    proc_floor = all_tier1_count + len(services) * 3
+    floor_met = proc_total >= proc_floor
 
     # Deduplicate (same ID planned multiple times)
     seen = set()
@@ -1345,6 +1528,16 @@ def cmd_manifest(args) -> None:
         "new": new_count,
         "updates": update_count,
         "by_type": by_type,
+        "entity_tiering": tiering_report,
+        "proc_floor": {
+            "tier1_entities": all_tier1_count,
+            "services": len(services),
+            "floor": proc_floor,
+            "proc_in_manifest": proc_planned,
+            "proc_existing_not_in_manifest": proc_existing - proc_in_manifest,
+            "proc_total": proc_total,
+            "floor_met": floor_met,
+        },
         "manifest_path": str(reef / ".reef" / "scuba-manifest.json"),
     })
 

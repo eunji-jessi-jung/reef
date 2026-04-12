@@ -43,6 +43,7 @@ Then, in any project directory:
 | `/reef:deep` | Exhaustive line-by-line tracing of critical areas |
 | `/reef:artifact` | Create or update a single artifact with full contract enforcement |
 | `/reef:update` | Re-index sources, detect changes, update affected artifacts |
+| `/reef:lint` | Lint artifacts for format and structural errors, with auto-fix |
 | `/reef:health` | Read-only validation and freshness report |
 | `/reef:test` | Test whether the reef answers your real questions |
 

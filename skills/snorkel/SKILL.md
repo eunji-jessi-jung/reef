@@ -242,7 +242,11 @@ Each fact is an atomic, verifiable claim linked to its source with `→`.
 
 **c. Write the file** to the correct subdirectory. Filename: lowercase ID + `.md` (e.g., `sys-orders.md`).
 
-**d. Snapshot:**
+**d. Lint and snapshot:**
+```bash
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/reef.py lint --reef <reef-root>
+```
+Parse the JSON output, filter to errors/warnings for this artifact's ID only. If any **errors** are found, fix them immediately before moving on (ID casing, missing fields, filename mismatch — see `/reef:lint` auto-fix rules). Then snapshot:
 ```bash
 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/reef.py snapshot <artifact-id-lowercase> --reef <reef-root>
 ```
