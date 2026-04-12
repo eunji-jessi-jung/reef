@@ -215,8 +215,8 @@ An artifact that does not meet its minimum Key Facts count is **not complete**. 
 | 1. Spec Layer | 3.1, 3.2 | API patterns + Schema docs | One agent per service |
 | 2. Entity Deep-Dive | 3.3, 3.15, 3.16 | Entity lifecycles + per-collection SCH- + field lineage | One agent per service |
 | 3. Service Signals | 3.4, 3.6, 3.10, 3.13 | Auth + error handling + risks + flow catalogs | One agent per service |
-| 4. Cross-Service | 3.5, 3.7, 3.8, 3.14 | FE/BE contracts + service pairs + entity comparisons + multi-app comparisons | One agent per pair |
-| 5. Synthesis | 3.9, 3.11, 3.12 | Patterns + DEC- + GLOSSARY- per service | One agent per category |
+| 4. Cross-Service | 3.5, 3.7, 3.7b, 3.8, 3.14 | FE/BE contracts + service pairs + intra-service data contracts + entity comparisons + multi-app comparisons | One agent per pair/service |
+| 5. Synthesis | 3.9, 3.11, 3.12 | Patterns + PAT- from manifest + DEC- + GLOSSARY- per service | One agent per category |
 
 Batch 0 runs first — SYS- updates must complete before other artifacts reference them. Within each subsequent batch, launch one Agent per service (or per pair for Batch 4). Batches 1-3 can run concurrently since they read different aspects of the same code. Batch 4 depends on Batch 1-2 results (needs SCH- and GLOSSARY- artifacts). Batch 5 depends on all prior batches.
 
@@ -260,11 +260,14 @@ Scan for exception handlers, retry logic, timeouts, circuit breakers, dead-lette
 ### 3.7 — Service contracts (all pairs)
 CON- artifact for **every** service pair (N×(N-1)/2). Template: `references/templates/contract-service-pair.md`. **Must include Mermaid `sequenceDiagram`** and `## Impact Analysis` for detected integrations. Use "No Integration Detected" section for pairs with no interaction. **Completeness check:** count must equal N×(N-1)/2.
 
+### 3.7b — Intra-service data contracts
+Scan each service for **internal conventions that external consumers depend on**: identifier/hash generation, export formats, path construction, authorization models, event schemas. Only create CON- if the signal is substantial (not trivial utilities). Template: `references/templates/contract.md` (generic). See `references/scuba-phase1-substeps.md` for the 5 signal types and rules.
+
 ### 3.8 — Cross-service entity comparison
 For terms appearing in SCH- from different services → CON- with side-by-side field comparison, semantic mismatches, canonical writing rules. Skip for single-service reefs.
 
-### 3.9 — Pattern and mechanism deepening
-Investigate named patterns from snorkel artifacts → PROC- or DEC- per pattern. Scuba depth = "what and why" (1-3 files). Flag anything requiring 5+ files for `/reef:deep`.
+### 3.9 — Pattern and mechanism deepening + PAT- generation
+Investigate named patterns from snorkel artifacts → PROC- or DEC- per pattern. Then **generate all manifest-planned PAT- artifacts** using `references/templates/pattern.md`. These are high-confidence cross-service divergences detected by `reef.py manifest` — create them with structural facts, marking Design Intent as `known_unknown` if the *why* isn't clear from code. Subjective patterns stay flagged for interactive mode. Flag anything requiring 5+ files for `/reef:deep`.
 
 ### 3.10 — Per-service RISK- artifacts
 Scan for TODO/FIXME/HACK, bare exceptions, hardcoded credentials, missing error handling, skipped tests → RISK- per service. Template: `references/templates/risk-service.md`. Severity by density (10+=high, 5-9=medium, 1-4=low).
@@ -428,10 +431,10 @@ Pick a number to create it now, or I can generate all {N} automatically.
 ```
 
 **Rules for PAT- callout:**
-- Always show if any PAT- candidates exist (from manifest or from cross-service signals during Phase 1).
-- If the manifest planned PAT- entries and Phase 1 did not produce them, this is the recovery mechanism — they must be surfaced here.
+- **Manifest-planned PAT- should already be generated** by sub-step 3.9. If they are, report them as completed in the briefing. If Phase 1 failed to produce them (check manifest `completed` for PAT- entries), this callout is the **recovery mechanism** — generate them now before proceeding.
+- **Subjective PAT- candidates** (noticed during Phase 1 but not in the manifest) are surfaced here for the user to decide.
 - Phrase each as the design question it answers, not an artifact ID.
-- Offer the option to generate all automatically — this is the aggressive path. Do not wait for interactive mode to produce patterns.
+- Offer the option to generate all subjective candidates automatically.
 - If the user says "generate all," create each PAT- artifact using the `references/templates/pattern.md` template. Read source code to fill in Design Intent, Trade-offs, and Where It Appears sections. Mark as `status: draft`.
 
 Then, **only if gaps exist that would benefit from line-by-line tracing**, add a soft lead-in to deep — framed through the gaps, not as a sales pitch:
@@ -460,17 +463,49 @@ If the user picks a gap or asks to explore a topic, enter **interactive mode** (
 
 ## Interactive Mode
 
-When the user wants to explore gaps after the briefing — or returns later to deepen artifacts — follow these rules:
+When the user wants to explore gaps after the briefing — or returns later to deepen artifacts.
+
+### Mode selection (MANDATORY before starting)
+
+Before asking the first question, present the mode choice:
+
+```
+How would you like to explore these gaps?
+
+  1. I'll answer — you ask me questions one at a time, I provide domain context
+  2. Reef answers — reef investigates the code and fills in answers autonomously,
+     then shows me what it found for review
+```
+
+Wait for the user to choose. Do NOT proceed without a selection.
+
+- **Option 1 → Human-guided mode** (rules below)
+- **Option 2 → Self-guided mode**: For each question, read source code to find the answer yourself. Present each finding as: "Q: {question} — My finding: {answer with source citations}. Does this match your understanding?" The user reviews and corrects. This is faster but may miss domain context that isn't in code.
+
+### Human-guided mode rules
 
 **Core principle:** "AI found the answers. I asked the questions." The user is the domain expert. Claude reads code; the user knows context.
 
-1. **One question at a time.** Read `${CLAUDE_PLUGIN_ROOT}/references/scuba-question-patterns.md` for question templates. Present one, wait for the answer, then verify against code. Never dump a list.
+0. **Load the question agenda first.** Read `.reef/questions.json` and collect all `"status": "unanswered"` or `"status": "partial"` questions. These are the primary agenda — they were surfaced during prior discovery and are waiting for domain input. Present the count: "I have {N} questions from previous discovery, plus {M} new ones from coverage gaps. Starting with the discovery backlog. (Question 1 / {total})"
+1. **One question at a time, with progress.** Show "Question {N} / {total}" with each question. Read `${CLAUDE_PLUGIN_ROOT}/references/scuba-question-patterns.md` for question templates. Present one, wait for the answer, then verify against code. Never dump a list.
 2. **User answers first.** Ask, listen, THEN investigate. If the user says "I don't know," offer to trace it in code. If they say "skip," move on.
-3. **Verify against code.** After the user answers, read relevant source files to confirm or contradict. Report briefly: "The code confirms X — found at `src/service.py:L42`."
-4. **Abort if stuck.** If 5+ file reads yield no clear answer, stop and report what you have so far. Ask whether to keep digging or move on.
-5. **Create artifacts from findings.** When enough material accumulates, propose an artifact (type, ID, scope). Follow `references/artifact-contract.md`. Cross-system artifacts use the project-level domain slug from `project.json`. Status is `"active"` when user-confirmed, `"draft"` otherwise.
-6. **Post-write:** lint, snapshot, rebuild-index, rebuild-map, log — same as Phase 1.
-7. **At pauses,** summarize: artifacts created/updated, questions answered, remaining gaps. Update `.reef/questions.json`.
+3. **WAIT for the user's response after each question.** Do NOT answer your own question. Do NOT proceed to the next question without user input. Do NOT auto-complete remaining questions after receiving one answer. Each question is a turn: you ask → user responds → you verify → you ask the next one. **This is a hard rule — violating it defeats the purpose of interactive mode.**
+4. **Verify against code.** After the user answers, read relevant source files to confirm or contradict. Report briefly: "The code confirms X — found at `src/service.py:L42`."
+5. **Write findings immediately.** After verifying an answer, update the relevant artifact right away — add verified facts to Key Facts, resolve known_unknowns, update sections. Do NOT batch artifact updates. A session that ends unexpectedly should not lose user-confirmed facts. Also update the question's status in `.reef/questions.json` to `"answered"`.
+6. **Abort if stuck.** If 5+ file reads yield no clear answer, stop and report what you have so far. Ask whether to keep digging or move on.
+7. **Create new artifacts from findings.** When a verified answer doesn't fit an existing artifact, propose a new one (type, ID, scope). Follow `references/artifact-contract.md`. Cross-system artifacts use the project-level domain slug from `project.json`. Status is `"active"` when user-confirmed, `"draft"` otherwise.
+8. **Post-write:** lint, snapshot, rebuild-index, rebuild-map, log — same as Phase 1.
+9. **At pauses,** summarize: artifacts created/updated, questions answered, remaining gaps.
+
+### Self-guided mode rules
+
+1. **Load the question agenda first** — same as human-guided mode rule 0. Read `.reef/questions.json` for unanswered/partial questions. These come first.
+2. **Work through questions autonomously.** For each question (backlog first, then coverage gaps), answer by reading source code. Use `scuba-question-patterns.md` for framing.
+3. **Present findings in batches of 3-5.** After investigating 3-5 questions, pause and show the user what you found. Format: question, finding, source citation. Ask: "Anything to correct or add before I continue?"
+4. **User corrections are gold.** If the user corrects a finding, that correction takes priority over code evidence — it's domain knowledge the code doesn't capture. Update the finding and note the source as "domain expert input."
+5. **Write findings immediately** — same as human-guided mode. Update artifacts and question bank after each batch review, not at the end.
+6. **Create new artifacts the same way** as human-guided mode (propose, confirm, write, lint).
+7. **Post-write and pause rules** are the same as human-guided mode.
 
 ---
 
