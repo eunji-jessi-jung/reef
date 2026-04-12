@@ -59,7 +59,7 @@ Reef: {name} ({path})
 
   Artifacts:  N total
     SYS-: a    SCH-: b    API-: c    CON-: d
-    PROC-: e   DEC-: f    GLOSSARY-: g   RISK-: h
+    PROC-: e   DEC-: f    GLOSSARY-: g   RISK-: h    PAT-: i
 
   Sources:
     API specs: N extracted (services: {list})

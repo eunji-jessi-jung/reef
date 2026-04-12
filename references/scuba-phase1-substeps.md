@@ -116,6 +116,7 @@ For each named pattern or domain-specific mechanism found in snorkel artifacts' 
 1. Read the source code to understand the pattern at a conceptual level.
 2. Document: what the pattern is, which entities/services use it, why it exists, what it enables, how it differs from the standard approach.
 3. **Output:** PROC- or DEC- artifact per pattern/mechanism. Set `freshness_note: "scuba-depth pattern analysis"`.
+   - **Note:** If you notice the same design choice appearing across multiple entities or services — two different approaches to the same problem, a shared concept with divergent implementations, a recurring architectural convention — flag it as a **PAT- candidate** in the manifest. Do NOT create PAT- artifacts in Phase 1. PAT- artifacts require understanding *why* the pattern exists, not just *that* it exists. They are created in Phase 2 or deep-dive, where the user can confirm the design intent.
 4. **Do not go deep.** If investigating requires tracing more than 2-3 source files, stop and flag for `/reef:deep`. Scuba = "what and why" (1-3 files). Deep = "show me every line" (5+ files).
 
 ## 3.10 — Per-service RISK- artifacts

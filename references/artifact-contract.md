@@ -16,6 +16,7 @@ The enforceable rulebook for all Reef artifacts. Every skill that creates, updat
 | Glossary | GLOSSARY- | Domain term registry | Terms (table with wikilinks), Related |
 | Contract | CON- | Cross-system boundary agreement | Parties, Key Facts, Agreement, Current State, Related |
 | Risk | RISK- | Known issues with severity tracking | Description, Key Facts, Impact, severity/resolution fields, Related |
+| Pattern | PAT- | Reusable design convention or cross-system comparison | Overview, Key Facts, Where It Appears, Design Intent, Trade-offs, Agent Guidance, Related |
 
 ---
 
@@ -108,7 +109,7 @@ These checks must pass before an artifact is accepted into the vault:
 2. All required frontmatter fields are present and in the correct order.
 3. `id` (uppercase) matches the filename (lowercase of id + `.md`). Prefix matches type.
 4. `status` is a valid enum (`draft`, `active`, `deprecated`).
-5. `type` is a valid enum (one of the 8 artifact types, lowercase).
+5. `type` is a valid enum (one of the 9 artifact types, lowercase).
 6. `freshness_note` is not empty.
 7. `## Key Facts` section is present (except for Glossary type).
 

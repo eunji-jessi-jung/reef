@@ -74,7 +74,7 @@ Seed questions during `/reef:init`. These are the north star. `/reef:test` evalu
 
 Knowledge bases die when the maintenance burden outgrows the value. Reef shifts that burden to the machine. `/reef:update` re-indexes sources, detects changes, and walks you through updating affected artifacts. `/reef:health` reports the state without modifying anything. Artifacts don't flip from good to bad — they age gradually. Run these after significant code changes.
 
-## Eight Artifact Types
+## Nine Artifact Types
 
 | Type | Prefix | Question it answers |
 |------|--------|-------------------|
@@ -86,6 +86,7 @@ Knowledge bases die when the maintenance burden outgrows the value. Reef shifts 
 | Glossary | GLOSSARY- | What does this term mean? |
 | Contract | CON- | What do these systems agree on? |
 | Risk | RISK- | What could go wrong? |
+| Pattern | PAT- | What problem does this solve repeatedly? |
 
 ## Obsidian
 

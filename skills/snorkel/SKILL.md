@@ -22,7 +22,7 @@ The key difference from a blind scan: snorkel reads the question bank and uses i
 
 After loading context, check if snorkel has already partially run by comparing existing artifacts against what `project.json` services would produce:
 
-- Count existing SYS-, SCH-, API-, CON-, GLOSSARY-, PROC-, RISK-, DEC- artifacts
+- Count existing SYS-, SCH-, API-, CON-, GLOSSARY-, PROC-, RISK-, DEC-, PAT- artifacts
 - Compare against the number of services and source repos configured
 
 If artifacts already exist:

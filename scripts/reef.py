@@ -43,7 +43,7 @@ VALID_STATUSES = {"draft", "active", "deprecated"}
 
 ARTIFACT_SUBDIRS = [
     "systems", "schemas", "apis", "processes",
-    "decisions", "glossary", "contracts", "risks",
+    "decisions", "glossary", "contracts", "risks", "patterns",
 ]
 
 # Map type prefix to section name for index generation
@@ -56,6 +56,7 @@ TYPE_SECTIONS = {
     "GLOSSARY": "Glossary",
     "CON": "Contracts",
     "RISK": "Risks",
+    "PAT": "Patterns",
 }
 
 # ---------------------------------------------------------------------------
@@ -1150,7 +1151,7 @@ def _extract_entities_from_schema(schema_path: Path) -> list[dict]:
             continue
         if in_tables and stripped.startswith("### "):
             raw_name = stripped[4:].strip()
-            # Clean: strip parenthetical annotations like "ProjectDocument (CXRProject / DBTProject / MMGProject)"
+            # Clean: strip parenthetical annotations like "UserDocument (AdminUser / RegularUser)"
             clean_name = raw_name.split("(")[0].strip()
             # Clean: take first name before " / " if multiple variants
             clean_name = clean_name.split(" / ")[0].strip()

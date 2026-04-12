@@ -27,7 +27,7 @@ Walk up from cwd looking for a `.reef/` directory. That parent is the reef root.
 
 **Create mode** — the user names a topic or type and no matching artifact exists:
 
-1. Determine the artifact type from context (system, schema, api, process, decision, glossary, connection, risk).
+1. Determine the artifact type from context (system, schema, api, process, decision, glossary, connection, risk, pattern).
 2. Generate the artifact ID following the conventions below.
 3. Read the matching template from `${CLAUDE_PLUGIN_ROOT}/references/templates/`.
 4. Proceed to evidence gathering.
@@ -114,6 +114,7 @@ After writing, remind the user: "Artifacts are wikilinked — open the reef dire
 | glossary | GLOSSARY- |
 | connection | CON- |
 | risk | RISK- |
+| pattern | PAT- |
 
 **Format:** Uppercase, hyphen-separated. Examples: `SYS-INGEST`, `SCH-INGEST-ORDER`, `CON-INGEST-PIPELINE-FEED`.
 
@@ -131,3 +132,4 @@ After writing, remind the user: "Artifacts are wikilinked — open the reef dire
 | glossary | artifacts/glossary/ |
 | connection | artifacts/connections/ |
 | risk | artifacts/risks/ |
+| pattern | artifacts/patterns/ |

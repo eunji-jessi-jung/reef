@@ -56,16 +56,18 @@ Walk up from cwd looking for a `.reef/` directory. That parent is the reef root.
 - Read `sources/apis/` and `sources/schemas/` for extracted API specs and ERDs. These contain the complete endpoint maps and data models. If these directories are empty, note this and warn that Phase 1 will produce thinner results — suggest running `/reef:source` first.
 - Read all GLOSSARY- artifacts — these are needed for entity comparison and glossary cross-checking.
 - **Mine snorkel artifacts for deepening signals.** Read the full body (not just frontmatter) of every existing artifact — especially Key Facts, Core Concepts, and known_unknowns sections. Extract patterns, domain-specific mechanisms, and architectural findings that deserve deeper investigation. Examples of signals:
-  - A named pattern (e.g., "outbox pattern", "saga orchestration", "event sourcing") → candidate for a PROC- artifact documenting the pattern
+  - A named pattern (e.g., "outbox pattern", "saga orchestration", "event sourcing") → candidate for a PROC- or DEC- artifact documenting the mechanism
   - A domain-specific mechanism (e.g., "hash-based deduplication", "materialized views", "optimistic locking with version counters") → candidate for a PROC- or DEC- artifact
   - A cross-service coupling signal (e.g., "shared API client must be passed to service initializers") → candidate for deeper CON- artifact
   - A gap or uncertainty in known_unknowns that code reading could partially resolve
+  - **A cross-system divergence signal** — the same concept (e.g., "case", "dataset", "project") appearing in multiple services with different definitions, different lifecycles, or different modeling approaches → flag as **PAT- candidate** for Phase 2
 
-  **Categorize each signal as scuba-level or deep-level:**
-  - **Scuba**: understand the pattern conceptually — what it is, which entities/services use it, why it exists, what it enables, how it differs from the standard approach. Produces PROC-, DEC-, or CON- artifacts.
+  **Categorize each signal by depth level:**
+  - **Scuba Phase 1**: understand the mechanism — what it is, which entities/services use it, how it works. Produces PROC-, DEC-, or CON- artifacts through code reading.
+  - **Scuba Phase 2 (PAT- candidates)**: patterns require understanding *why* a design choice was made, not just *that* it exists. A PAT- artifact documents a reusable architectural convention — the design intent, the trade-offs, the decision rule for when to use it vs alternatives. These emerge from noticing the same problem solved differently across boundaries, or the same convention applied consistently for a reason code alone doesn't explain. **Flag PAT- candidates during Phase 1 but create them in Phase 2**, where the user can confirm the design intent.
   - **Deep**: trace the implementation exhaustively — field-by-field lineage, exact code paths, every edge case. Produces dense, line-cited artifacts. Flag these for `/reef:deep` rather than investigating in scuba.
 
-  Collect scuba-level signals into a list for Phase 1 sub-step 3.9. Collect deep-level signals into a separate list for the Phase 1 briefing.
+  Collect Phase 1 signals into a list for sub-step 3.9. Collect PAT- candidates and deep-level signals into separate lists for the Phase 1 briefing.
 
 ---
 
@@ -117,7 +119,7 @@ The manifest is saved to `.reef/scuba-manifest.json`. Read it and report the cou
 
 The programmatic manifest covers what can be detected from file structure and schema headings. Review it and add items it cannot detect:
 
-- **PROC-/DEC- pattern artifacts** from snorkel signal mining (Step 2). One per scuba-level signal.
+- **PAT- candidates** from snorkel signal mining (Step 2). These are NOT planned for Phase 1. Instead, list them as Phase 2 candidates. A PAT- artifact is warranted when you notice: the same concept modeled differently across systems, a recurring design convention whose rationale isn't obvious from code alone, or an architectural boundary pattern that governs how things are built. Examples: FK vs link table choice, cross-system entity comparison (same word, different meaning), orchestration vs individual execution model, control plane vs data plane separation.
 - **PROC- multi-app comparison pairs** — for services where the same domain concept is implemented differently across sub-apps (parallel directory structures, similar-but-not-identical models). One per {concept} × {app-pair}. These require reading source code to detect mirrored structures.
 - **SCH- field lineage** — for core entities with complex data origins (ingestion pipelines, ETL, computed fields). One per entity group. Requires reading ingestion/transform code to identify.
 - **CON- entity comparisons** — for terms appearing in SCH- from different services with potentially different meanings.
@@ -146,13 +148,15 @@ Artifact generation manifest:
   PROC- auth:            N planned
   PROC- flow catalogs:   N planned
   PROC- comparisons:     N planned
-  PROC-/DEC- patterns:   N planned (from pattern signals)
   CON-  contracts:       N planned (M new, K updates)
   RISK- per service:     N planned
   DEC-  observable:      N planned
   GLOSSARY- per service: N planned
   ──────────────
-  Total:                 N artifacts
+  Phase 1 total:         N artifacts
+
+  Phase 2 candidates (require human input):
+  PAT-  patterns:        N candidates (from cross-system divergence signals)
 ```
 
 Save the manifest to `.reef/scuba-manifest.json` with this structure:
@@ -267,11 +271,54 @@ Trace non-trivial field origins (API input, external system, computed, copied, s
 
 After all sub-steps, read `.reef/scuba-manifest.json` and present a manifest-based summary covering:
 
-1. **Manifest completion** — N/M completed, K skipped (per category: API-, SCH-, PROC-, CON-, RISK-, DEC-, GLOSSARY-)
+1. **Manifest completion** — N/M completed, K skipped (per category: API-, SCH-, PROC-, CON-, RISK-, DEC-, GLOSSARY-, PAT-)
 2. **Skipped artifacts** with reasons
 3. **Key findings** — notable patterns, heaviest couplings, complex lifecycles
-4. **Phase 2 candidates** — questions code alone cannot answer (state transitions, naming overlaps, production behavior)
-5. **Deep-dive flags** — items too detailed for scuba (field-by-field lineage, line-by-line execution paths)
+
+### Coverage gap detection (domain-agnostic)
+
+Scan the reef's current artifacts for structural gaps. These are detectable from the reef itself — no external baseline needed:
+
+**Repetition gaps** — the same concept appearing across services with different implementations:
+- Scan GLOSSARY- artifacts for terms flagged with disambiguation notes or appearing in 2+ service glossaries with different definitions → each is a **PAT- candidate** (cross-system entity comparison)
+- Scan SCH- artifacts for entities with similar names across services but different field structures → PAT- candidate
+- Scan PROC- artifacts for the same lifecycle pattern applied differently (e.g., "auth" exists for every service — do they follow the same pattern or diverge?) → PAT- candidate if they diverge in an interesting way
+
+**Depth gaps** — services or areas with thin coverage relative to their complexity:
+- For each service: count PROC- artifacts vs number of entities in that service's SCH-. If a service has 15+ entities but only 3 PROC-, its entity lifecycles are under-documented.
+- For pipeline/orchestration services: count individual flow PROC- artifacts vs flows listed in any flow catalog. If a flow catalog lists 20 flows but only 1 PROC- exists, per-flow documentation is a gap.
+- For multi-app services (multiple sub-applications under one repo): check if comparison artifacts exist. If a service has 3+ apps with parallel structures but no comparison PROC- or PAT-, that's a gap.
+
+**Boundary gaps** — cross-system areas without contracts:
+- Count service pairs (N services → N*(N-1)/2 pairs). Compare against CON- artifact count. Flag uncovered pairs that have known integration points (visible from API calls, shared entities, or `relates_to` edges between services).
+
+Present gaps as a prioritized list with **pre-formulated prompts** the user can pick from:
+
+```
+Phase 2 opportunities (pick a number, or explore something else):
+
+  Undocumented areas:
+  1. Pipeline Service lists 20 flows in its catalog but none have
+     their own documentation
+     → "Document individual pipeline flows" (est. ~15 artifacts)
+  2. Core Service has 12 entities but only 6 have lifecycle docs
+     → "Document remaining entity lifecycles"
+
+  Cross-system patterns worth capturing:
+  3. "order" and "item" appear in both Service A and Service B
+     glossaries with different definitions — how do they relate?
+  4. Three services define "project" differently — worth clarifying
+  5. Service A uses both FK and link tables for relationships —
+     what's the decision rule?
+```
+
+**Presentation rules:**
+- **Never use artifact type prefixes (PAT-, PROC-, SCH-) in user-facing text.** The user thinks in questions and topics, not artifact types. Reef picks the right type internally when writing.
+- **Frame gaps as questions or observations**, not as "missing artifact X." Say "none have their own documentation" not "0 per-flow PROC- artifacts."
+- **Frame cross-system patterns as insights**, not as "PAT- candidates." Say "three services define Project differently — worth clarifying?" not "Create a PAT- comparing Project."
+- **The key: every gap comes with a concrete next action.** The user doesn't need to formulate the prompt — they pick a number.
+
+4. **Deep-dive flags** — items too detailed for scuba (field-by-field lineage, line-by-line execution paths)
 
 Then:
 
@@ -303,9 +350,9 @@ Then:
 
 Then ask:
 
-> "Ready for Phase 2? Here are the exploration-worthy patterns I found. Where would you like to start — or would you rather explore something else?"
+> "Ready for Phase 2? Here's what I found that could use your input — or explore something else entirely."
 
-Present the unresolved items as a prioritized list. The heaviest dependencies, the most ambiguous entities, and the most incomplete lifecycles should rank highest.
+Present the coverage gaps and cross-system patterns from the gap detection above as a single numbered list. No artifact type prefixes in user-facing text. The user picks a number or names their own topic.
 
 ---
 

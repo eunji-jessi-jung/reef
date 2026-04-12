@@ -82,6 +82,7 @@ Read-only report. Shows coverage, freshness, and validation issues without chang
 | Glossary | GLOSSARY- | What does this term mean? |
 | Contract | CON- | What do these systems agree on? |
 | Risk | RISK- | What could go wrong? |
+| Pattern | PAT- | What problem does this solve repeatedly? |
 
 ## Tips
 
