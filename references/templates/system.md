@@ -1,7 +1,7 @@
 ---
 id: "{ID}"
 type: "system"
-title: "{TITLE}"
+title: "{Title in Title Case}"
 domain: "{DOMAIN}"
 status: "draft"
 last_verified: {DATE}

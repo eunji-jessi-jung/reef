@@ -17,7 +17,6 @@ reef skills:
 
   Setup
     /reef:init        Bootstrap a new reef from your codebase
-    /reef:feed        Add reference documents to an existing reef
 
   Discovery (progressive depth)
     /reef:snorkel     Auto-discover draft artifacts from source code
@@ -29,12 +28,13 @@ reef skills:
     /reef:update      Re-index sources and update stale artifacts
     /reef:artifact    Create or update a single artifact
     /reef:health      Validate artifacts and report freshness
-
-  Utilities
-    /reef:obsidian    Open the reef in Obsidian
     /reef:test        Test the reef against your question bank
-    /reef:extract     Detect tech stack and extract API/ERD by reading code
+
+  Help
     /reef:help        This screen
+
+Tip: Artifacts are wikilinked — open the reef directory as an Obsidian vault for graph visualization.
+Tip: Have docs that aren't in the codebase? Drop them in sources/raw/ and scuba will use them.
 ```
 
 ---

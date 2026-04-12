@@ -39,9 +39,9 @@ Required fields, in this exact order:
 
 ```yaml
 ---
-id: "{PREFIX}-{slug}"
+id: "{PREFIX}-{SLUG}"                  # always uppercase (e.g., SYS-INGEST)
 type: "{type}"
-title: "{Human-readable title}"
+title: "{Human-Readable Title in Title Case}"
 domain: "{domain-slug}"
 status: draft | active | deprecated
 last_verified: YYYY-MM-DD          # unquoted ISO date
@@ -68,7 +68,8 @@ notes: "{optional freeform notes}"
 
 ### Field Rules
 
-- `id` must match the filename: lowercase, hyphens only (e.g., `sys-ingest` matches `sys-ingest.md`).
+- `id` is uppercase with hyphens (e.g., `SYS-INGEST`, `SCH-ORDERS-CORE`). The filename is the lowercase form of the id with `.md` (e.g., `SYS-INGEST` → `sys-ingest.md`).
+- `title` must use Title Case: capitalize the first letter of each major word. Minor words (a, an, the, and, but, or, for, in, of, on, to, with) stay lowercase unless they start the title. Examples: "Order Management Service", "Payments Domain Glossary", "Ingest ↔ Pipeline Integration Contract".
 - `status` accepts exactly one of: `draft`, `active`, `deprecated`.
 - `last_verified` is an unquoted ISO date (`2026-04-10`, not `"2026-04-10"`).
 - `freshness_note` must never be empty. State why the artifact is current or what might make it stale.
@@ -105,7 +106,7 @@ These checks must pass before an artifact is accepted into the vault:
 
 1. YAML is parseable.
 2. All required frontmatter fields are present and in the correct order.
-3. `id` matches the filename (lowercase, hyphens, prefix matches type).
+3. `id` (uppercase) matches the filename (lowercase of id + `.md`). Prefix matches type.
 4. `status` is a valid enum (`draft`, `active`, `deprecated`).
 5. `type` is a valid enum (one of the 8 artifact types, lowercase).
 6. `freshness_note` is not empty.

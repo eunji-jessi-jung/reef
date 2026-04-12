@@ -191,7 +191,7 @@ If any mandatory type shows 0, go back and generate it before proceeding. A thin
 ---
 id: "SYS-ORDERS"                        # uppercase prefix + uppercase slug
 type: "system"                           # lowercase type matching prefix
-title: "Order Management Service"        # human-readable
+title: "Order Management Service"        # Title Case — capitalize major words
 domain: "orders"                         # domain slug
 status: "draft"                          # always "draft" for snorkel
 last_verified: 2026-04-10               # unquoted ISO date, today
@@ -404,9 +404,11 @@ Next steps:
 
 If the key gaps include things that existing documents could answer (architecture decisions, deployment topology, authorization models, business rules), add:
 
-"Some of these gaps might be answered by existing docs — PRDs, architecture specs, design docs, SRS. If you have any, `/reef:feed` can pull them in and the next pass will use them."
+"Some of these gaps might be answered by existing docs — PRDs, architecture specs, design docs, SRS. If you have any, drop them into `sources/raw/` and the next pass will use them."
 
 Only mention this if the gaps are genuinely the kind that docs would fill. Do not mention it if the gaps are code-level (e.g., "unclear error handling in module X").
+
+Also mention: "Artifacts are wikilinked — you can open the reef directory as an Obsidian vault to explore the knowledge graph."
 
 ---
 

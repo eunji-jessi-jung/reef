@@ -140,6 +140,8 @@ Run:
 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/reef.py log "Test pass: {answered}/{total} answered, {partial} partial, {unanswered} gaps" --reef <reef-root>
 ```
 
+After logging, remind the user: "Artifacts are wikilinked — open the reef directory as an Obsidian vault to explore the knowledge graph. Have docs that might fill gaps? Drop them in `sources/raw/`."
+
 ---
 
 ## Voice and Personality

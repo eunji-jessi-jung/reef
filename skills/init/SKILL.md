@@ -54,7 +54,7 @@ Estimated cost (one-time):
   (On API: roughly $3-5 for small, $10-20 for large)
 
 - Output: draft artifacts + API specs + ERDs + question bank
-- After init: /reef:scuba to deepen, /reef:feed to add docs
+- After init: /reef:scuba to deepen artifacts with domain knowledge
 - Anytime: /reef:help for skill list, reef status, and what to do next
 ```
 
@@ -93,8 +93,11 @@ Also check any path the user explicitly provides.
 
   Options:
     1. Continue building — {recommendation based on state}
-    2. Start fresh — delete everything and re-init
+    2. Start a new reef — different codebases, different domain (keeps this one intact)
+    3. Start fresh — delete everything and re-init from scratch
   ```
+
+  If the user picks option 2: proceed to Step 2 as if no reef exists. The new reef will be created in a separate directory with a different name. The existing reef is left untouched.
 
   State-based recommendations:
   - No artifacts, no specs → "Run `/reef:snorkel` and `/reef:source` to start discovery"
@@ -220,7 +223,7 @@ Update `.reef/project.json` with the source paths:
 
 Read the existing project.json first, then update — do not overwrite other fields.
 
-Do not mention `sources/raw/` or `/reef:feed` here — it goes by too fast and gets buried. Snorkel's wrap-up is the better place to suggest feeding docs, after the user has seen artifacts and knows what gaps exist.
+Do not mention `sources/raw/` here — it goes by too fast and gets buried. Snorkel's wrap-up is the better place to suggest adding docs, after the user has seen artifacts and knows what gaps exist.
 
 ---
 
@@ -352,7 +355,7 @@ When both complete:
 
 3. **Summarize** results from both agents (artifacts created, API specs extracted, questions answered).
 
-4. **Suggest next steps:** `/reef:scuba` to deepen, `/reef:feed` to add docs, `/reef:test` to check coverage.
+4. **Suggest next steps:** `/reef:scuba` to deepen artifacts, `/reef:test` to check coverage. Mention that artifacts are wikilinked and can be opened as an Obsidian vault for graph visualization.
 
 ---
 

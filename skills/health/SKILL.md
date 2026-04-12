@@ -91,6 +91,8 @@ If the user accepts, run these:
 
 Report findings grouped by severity: contradictions first, then stale claims, then empty known_unknowns.
 
+After presenting results, remind the user: "Artifacts are wikilinked — open the reef directory as an Obsidian vault to explore the knowledge graph. Have docs that might fill gaps? Drop them in `sources/raw/`."
+
 ## Important
 
 This skill is strictly read-only. Do not modify any artifact files, index files, or map files. If the user asks to fix something, direct them to `/reef:update` or `/reef:artifact`.

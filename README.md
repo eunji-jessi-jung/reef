@@ -45,7 +45,6 @@ Then, in any project directory:
 | `/reef:update` | Re-index sources, detect changes, update affected artifacts |
 | `/reef:health` | Read-only validation and freshness report |
 | `/reef:test` | Test whether the reef answers your real questions |
-| `/reef:obsidian` | Open the reef in Obsidian for graph visualization |
 
 ## When to Use Each Depth
 
@@ -90,4 +89,8 @@ Knowledge bases die when the maintenance burden outgrows the value. Reef shifts 
 
 ## Obsidian
 
-Run `/reef:obsidian` to open the reef as an Obsidian vault. Artifacts are wikilinked — the graph view shows how everything connects. Enable Graph View and Dataview plugins for the best experience. The reef is plain markdown, so any markdown tool works.
+Artifacts are wikilinked with `[[artifact-id]]` syntax — open the reef directory as an Obsidian vault to see the full graph of how everything connects. Enable Graph View and Dataview plugins for the best experience. The reef is plain markdown, so any markdown tool works.
+
+## Adding Your Own Docs
+
+Have architecture docs, design specs, or runbooks that aren't in the codebase? Drop them into `sources/raw/` in your reef directory. Scuba will pick them up when deepening artifacts — they're especially useful for answering questions that code alone can't.

@@ -118,6 +118,8 @@ python3 ${CLAUDE_PLUGIN_ROOT}/scripts/reef.py log "Created <artifact-id>" --reef
 
 Use "Updated" instead of "Created" in the log message when updating an existing artifact.
 
+After the dive is complete, remind the user: "Artifacts are wikilinked — open the reef directory as an Obsidian vault to see how everything connects."
+
 ## Key Rules
 
 - This is not snorkel. Read deeply. Trace paths. Check edge cases.

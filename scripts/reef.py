@@ -44,7 +44,6 @@ VALID_STATUSES = {"draft", "active", "deprecated"}
 ARTIFACT_SUBDIRS = [
     "systems", "schemas", "apis", "processes",
     "decisions", "glossary", "contracts", "risks",
-    "patterns",
 ]
 
 # Map type prefix to section name for index generation
@@ -57,7 +56,6 @@ TYPE_SECTIONS = {
     "GLOSSARY": "Glossary",
     "CON": "Contracts",
     "RISK": "Risks",
-    "PAT": "Patterns",
 }
 
 # ---------------------------------------------------------------------------
@@ -195,7 +193,7 @@ def collect_artifacts_from_dir(artifacts_dir: Path) -> list[tuple[Path, dict]]:
     results = []
     if not artifacts_dir.is_dir():
         return results
-    # Check all known subdirs plus any extra ones (like 'patterns')
+    # Check all known subdirs plus any extra ones
     for sd in artifacts_dir.iterdir():
         if not sd.is_dir() or sd.name.startswith("."):
             continue
@@ -224,7 +222,6 @@ def cmd_init(args) -> None:
     for subdir in ARTIFACT_SUBDIRS:
         (root / "artifacts" / subdir).mkdir(parents=True, exist_ok=True)
 
-    (root / "sources" / "registries").mkdir(parents=True, exist_ok=True)
     (root / "sources" / "raw").mkdir(parents=True, exist_ok=True)
 
     dot_reef = root / ".reef"
@@ -354,12 +351,15 @@ def cmd_snapshot(args) -> None:
     reef = find_reef_root(args.reef)
     artifact_id = args.artifact_id
 
-    # Find the artifact file
+    # Find the artifact file (try exact, then lowercase, then uppercase)
     artifact_file = None
-    for subdir in ARTIFACT_SUBDIRS:
-        candidate = reef / "artifacts" / subdir / f"{artifact_id}.md"
-        if candidate.is_file():
-            artifact_file = candidate
+    for aid_variant in [artifact_id, artifact_id.lower(), artifact_id.upper()]:
+        for subdir in ARTIFACT_SUBDIRS:
+            candidate = reef / "artifacts" / subdir / f"{aid_variant}.md"
+            if candidate.is_file():
+                artifact_file = candidate
+                break
+        if artifact_file:
             break
 
     if artifact_file is None:
@@ -526,10 +526,10 @@ def cmd_lint(args) -> None:
     warnings = []
     infos = []
 
-    # Build lookup: artifact_id -> (path, frontmatter)
+    # Build lookup: artifact_id (uppercase) -> (path, frontmatter)
     art_map = {}
     for path, fm in artifacts:
-        aid = fm.get("id", path.stem)
+        aid = fm.get("id", path.stem).upper()
         art_map[aid] = (path, fm)
 
     # Build set of all relates_to targets pointing at each artifact
@@ -537,7 +537,7 @@ def cmd_lint(args) -> None:
     for aid, (_, fm) in art_map.items():
         for entry in (fm.get("relates_to") or []):
             target = entry.get("target", entry) if isinstance(entry, dict) else entry
-            target = str(target).strip("[]")
+            target = str(target).strip("[]").upper()
             incoming.setdefault(target, set()).add(aid)
 
     # Build current file set for source existence check
@@ -582,14 +582,62 @@ def cmd_lint(args) -> None:
                 "message": f"Invalid status '{status_val}', must be one of: {', '.join(sorted(VALID_STATUSES))}",
             })
 
-        # id matches filename
-        if fm.get("id") and fm["id"] != apath.stem:
+        # id matches filename (id is uppercase, filename is lowercase of id)
+        if fm.get("id") and fm["id"].lower() != apath.stem.lower():
             errors.append({
                 "artifact": aid,
                 "check": "schema",
                 "severity": "error",
                 "message": f"Frontmatter id '{fm['id']}' does not match filename '{apath.stem}'",
             })
+        # id should be uppercase
+        if fm.get("id") and fm["id"] != fm["id"].upper():
+            warnings.append({
+                "artifact": aid,
+                "check": "id_case",
+                "severity": "warning",
+                "message": f"Frontmatter id '{fm['id']}' should be uppercase: '{fm['id'].upper()}'",
+            })
+        # filename should be lowercase
+        if apath.stem != apath.stem.lower():
+            warnings.append({
+                "artifact": aid,
+                "check": "filename_case",
+                "severity": "warning",
+                "message": f"Filename '{apath.name}' should be lowercase: '{apath.stem.lower()}.md'",
+            })
+
+        # title must be Title Case
+        title_val = fm.get("title", "")
+        if title_val:
+            minor_words = {"a", "an", "the", "and", "but", "or", "for", "in", "of", "on", "to", "with", "vs", "via"}
+            words = title_val.split()
+            bad_title = False
+            for i, w in enumerate(words):
+                # Skip special tokens (arrows, symbols, acronyms that are all-caps)
+                if w in {"↔", "→", "←", "--", "-", "/"} or w.isupper():
+                    continue
+                if i == 0:
+                    # First word must be capitalized
+                    if w[0].islower():
+                        bad_title = True
+                        break
+                elif w.lower() in minor_words:
+                    # Minor words should be lowercase (unless first)
+                    if w[0].isupper() and w.lower() in minor_words:
+                        continue  # allow capitalized minor words (not an error, just not ideal)
+                else:
+                    # Major words must be capitalized
+                    if w[0].islower():
+                        bad_title = True
+                        break
+            if bad_title:
+                warnings.append({
+                    "artifact": aid,
+                    "check": "title_case",
+                    "severity": "warning",
+                    "message": f"Title '{title_val}' is not in Title Case",
+                })
 
         # Check 1: Orphan detection (no incoming relates_to, except SYS- roots)
         if aid not in incoming and not aid.startswith("SYS-"):
@@ -603,7 +651,7 @@ def cmd_lint(args) -> None:
         # Check 2: Dangling references
         for entry in (fm.get("relates_to") or []):
             target = entry.get("target", entry) if isinstance(entry, dict) else entry
-            target = str(target).strip("[]")
+            target = str(target).strip("[]").upper()
             if target not in art_map:
                 errors.append({
                     "artifact": aid,
@@ -647,11 +695,11 @@ def cmd_lint(args) -> None:
                         "message": f"Key fact without source citation: {stripped[:80]}",
                     })
 
-        # Check 6: Wikilink/frontmatter sync
+        # Check 6: Wikilink/frontmatter sync (case-insensitive comparison)
         relates_to_targets = set()
         for entry in (fm.get("relates_to") or []):
             t = entry.get("target", entry) if isinstance(entry, dict) else entry
-            relates_to_targets.add(str(t).strip("[]"))
+            relates_to_targets.add(str(t).strip("[]").upper())
         wikilinks = set()
         if "## Related" in body:
             rel_start = body.index("## Related")
@@ -660,7 +708,7 @@ def cmd_lint(args) -> None:
             if next_heading != -1:
                 rel_section = rel_section[:next_heading]
 
-            wikilinks = set(re.findall(r"\[\[([^\]]+)\]\]", rel_section))
+            wikilinks = {wl.upper() for wl in re.findall(r"\[\[([^\]]+)\]\]", rel_section)}
 
         # Wikilinks in Related that aren't in relates_to
         for wl in wikilinks:
@@ -1147,7 +1195,7 @@ def cmd_manifest(args) -> None:
     if apis_dir.is_dir():
         for spec_path in sorted(apis_dir.rglob("openapi.json")):
             rel = spec_path.relative_to(apis_dir)
-            parts = list(rel.parts[:-1])  # e.g., ["cdm", "breast"]
+            parts = list(rel.parts[:-1])  # e.g., ["payments", "gateway"]
             if len(parts) >= 2:
                 svc, sub = parts[0].upper(), parts[1].upper()
                 aid = f"API-{svc}-{sub}"

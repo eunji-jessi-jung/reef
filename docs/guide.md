@@ -70,16 +70,6 @@ Read-only report. Shows coverage, freshness, and validation issues without chang
 
 **When to use:** Before a scuba session (to see where gaps are), before onboarding someone, or to check if an update is needed.
 
-## 6. Add Documents — `/reef:feed`
-
-Add existing documentation (design docs, runbooks, API guides) to the reef as raw source material.
-
-**When to use:** When you have useful docs that aren't in the codebase — Confluence pages, Google Docs exports, architecture diagrams. Feed them in, then run scuba to incorporate the knowledge into artifacts.
-
-## 7. Obsidian — `/reef:obsidian`
-
-Opens the reef in Obsidian for graph visualization. Artifacts are wikilinked — the graph view shows how everything connects.
-
 ## Artifact Types
 
 | Type | Prefix | Answers |
@@ -97,6 +87,7 @@ Opens the reef in Obsidian for graph visualization. Artifacts are wikilinked —
 
 - **Start small.** One scuba session deepening 2-3 artifacts is better than trying to cover everything at once.
 - **Correct early.** If Reef gets a fact wrong, correct it immediately. Wrong facts compound — right facts compound too.
-- **Feed docs.** The more context Reef has, the better its questions get. Architecture docs and decision records are high-value feeds.
+- **Add your own docs.** Drop architecture docs, design specs, or runbooks into `sources/raw/` — scuba will use them when deepening artifacts. Especially useful for questions that code alone can't answer.
+- **Open in Obsidian.** Artifacts are wikilinked with `[[artifact-id]]` syntax. Open the reef directory as an Obsidian vault to see the full knowledge graph. Enable Graph View and Dataview plugins.
 - **Run update after deploys.** API specs and schemas drift silently. A 2-minute update run catches drift before it becomes tribal knowledge.
 - **One reef per team.** Services that don't talk to each other belong in separate reefs.

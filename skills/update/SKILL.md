@@ -129,7 +129,7 @@ Skipped: API-INGEST-REST, CON-INGEST-PIPELINE-FEED
 
 If the diff command reports no source changes after re-indexing, respond:
 
-> "All sources unchanged since last update. API specs and ERDs have been refreshed from current code. Your reef is fresh."
+> "All sources unchanged since last update. API specs and ERDs have been refreshed from current code. Your reef is fresh. Open the reef directory as an Obsidian vault to explore the knowledge graph."
 
 Source re-extraction (Step 2) always runs regardless of the diff result — the code may have changed even if the indexed file set hasn't. The diff in Step 4 only determines whether artifacts need content updates.
 

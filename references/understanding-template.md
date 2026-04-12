@@ -39,7 +39,7 @@ Map the applications and extract what they do in user-facing terms.
 
 ### S3. Data model
 
-Extract and describe the data layer. Semi-automatic via `/reef:extract`.
+Extract and describe the data layer. Semi-automatic via `/reef:source`.
 
 - What database(s) does each repo use? (PostgreSQL, MongoDB, Redis, etc.)
 - What ORM or database client is used? (SQLAlchemy, Beanie, GORM, Prisma, etc.)
@@ -51,7 +51,7 @@ Extract and describe the data layer. Semi-automatic via `/reef:extract`.
 
 ### S4. API surface
 
-Extract and describe the API layer. Semi-automatic via `/reef:extract`.
+Extract and describe the API layer. Semi-automatic via `/reef:source`.
 
 - What API endpoints does each service expose?
 - What are the main resource groups and their CRUD operations?
@@ -280,6 +280,6 @@ These rules modify the question set based on what the structural scan discovers:
 
 Some questions should trigger automated extraction rather than manual investigation:
 
-- **S3 (Data model) and S4 (API surface):** Trigger `/reef:extract` to generate reusable scripts and extract OpenAPI specs and ERD diagrams. During init, this runs as a separate step before question generation.
+- **S3 (Data model) and S4 (API surface):** Trigger `/reef:source` to extract OpenAPI specs and ERD diagrams using the tiered protocol. During init, this runs in parallel with snorkel.
 - **S6 (Runtime architecture):** Read docker-compose files, Helm charts, and startup configs directly.
 - **S1 (System boundaries):** Read CLAUDE.md and README.md first — richest signal for service identity and boundaries.

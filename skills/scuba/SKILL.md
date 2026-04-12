@@ -285,7 +285,21 @@ Then:
    python3 ${CLAUDE_PLUGIN_ROOT}/scripts/reef.py lint --reef <reef-root>
    python3 ${CLAUDE_PLUGIN_ROOT}/scripts/reef.py log "Scuba Phase 1: generated N artifacts" --reef <reef-root>
    ```
-5. **Render health report** using the same Unicode box-drawing format as snorkel Step 7. This gives the user an immediate visual sense of how much richer the reef got from Phase 1.
+5. **Auto-fix lint errors.** Phase 1 agents can produce lint errors at scale (ID casing, missing fields, dangling wikilinks, frontmatter issues). These MUST be fixed before the briefing — 4 errors per artifact is not acceptable quality, and presenting unfixed errors undermines trust.
+
+   Run `reef.py lint` and parse the JSON output. For each error category:
+   - **ID/filename mismatch:** rename file or fix frontmatter `id` field
+   - **Missing required fields:** add the field with a sensible default or `"TBD"`
+   - **Dangling `relates_to` targets:** remove the entry or create the missing artifact stub
+   - **Wikilink/frontmatter sync:** update `## Related` section to match `relates_to` or vice versa
+   - **ID casing convention:** fix to match `{TYPE}-{SERVICE}-{NAME}` uppercase convention
+   - **Missing Key Facts source links:** add `→ source TBD` placeholder
+
+   **Batch fix with agents:** Group errors by artifact file. Launch one agent per file (all in a single message) to read the artifact, fix all its lint errors, and re-write. After all agents complete, re-run `reef.py lint` to verify zero errors remain. If errors persist, fix manually (no more than 2 fix rounds).
+
+   **Target: zero lint errors before the briefing.**
+
+6. **Render health report** using the same Unicode box-drawing format as snorkel Step 7. This gives the user an immediate visual sense of how much richer the reef got from Phase 1.
 
 Then ask:
 
@@ -370,18 +384,26 @@ Draw from these patterns, mapped to the understanding template C1-C10. Present o
 
 ### 5.3 — Question-by-question flow
 
+**CRITICAL: The user answers first.** Phase 2 is Socratic — "AI found the answers. I asked the questions." The user is the domain expert. Always ask, listen, THEN investigate. Never launch an investigation before the user has had a chance to answer.
+
 For each question or topic:
 
 1. **Present the question.** One at a time. Do not dump a list.
-2. **Listen to the user's answer.** Let them talk. Ask follow-ups if something is unclear.
-3. **Synthesize what was learned:**
-   - Fact — what was established
+2. **Wait for the user's answer.** Let them talk. Ask follow-ups if something is unclear. Three possible outcomes:
+   - **User answers** → go to step 3 (verify).
+   - **User says "I don't know" / "not sure"** → offer to investigate: "I can go trace this in the code if you'd like — want me to investigate?" If yes, go to step 3a. If no, skip to the next question.
+   - **User says "skip"** → move to the next question.
+3. **Verify against code.** After the user answers, go read the relevant source code to find evidence that supports or contradicts what the user said. Report findings briefly: "The code confirms X — found at `src/service.py:L42`. However, I also found Y which might be worth noting." Then record verified findings in existing artifacts or create a new one if warranted.
+   - **3a. Self-directed investigation** (when user didn't know): Read the relevant source code, trace the behavior, and report back with findings. Keep investigations focused — read the most relevant 3-5 files, not the entire codebase. Present what you found and ask the user to confirm or correct your interpretation.
+4. **Abort mechanism.** If an investigation is taking more than ~30 seconds of tool calls (5+ file reads with no clear answer emerging), stop and report what you found so far: "I have not found a clear answer yet. Here is what I see so far: [summary]. Want me to keep digging, or move on?" Do not let a single investigation block the entire Phase 2 flow.
+5. **Synthesize what was learned:**
+   - Fact — what was established (from user + code evidence)
    - Why it matters — how it connects to the system understanding
    - Source — user statement, code reference, or both
    - Confidence — high/medium/low
    - Open question — anything the answer raised but did not resolve
-4. **When enough material accumulates for an artifact,** propose creating or updating one. Explain what artifact type, what ID, and what it would cover.
-5. **After each artifact is written,** move to the next question. Do not ask "What did I get wrong?" after every artifact — it creates unnecessary overhead. The user will speak up if something is wrong.
+6. **When enough material accumulates for an artifact,** propose creating or updating one. Explain what artifact type, what ID, and what it would cover.
+7. **After each artifact is written,** move to the next question. The user will speak up if something is wrong.
 
 Proactively suggest questions that code cannot answer:
 
@@ -425,6 +447,8 @@ Use "Updated" instead of "Created" in the log message when updating an existing 
   1. Update `.reef/questions.json` to reflect what was answered.
   2. Run rebuild-index, rebuild-map, and lint.
   3. **Render health report** — same Unicode box-drawing format as the Phase 1 briefing. Show the final artifact counts, coverage, and freshness so the user sees the full picture of what scuba produced.
+  4. Remind the user: "Artifacts are wikilinked — open the reef directory as an Obsidian vault to explore the knowledge graph."
+  5. If unanswered questions remain that look like they could be answered by existing docs (architecture specs, PRDs, design docs), mention: "Have docs that might fill these gaps? Drop them in `sources/raw/` and the next scuba pass will use them."
 
 ---
 
