@@ -53,6 +53,8 @@ Walk up from cwd looking for a `.reef/` directory. That parent is the reef root.
 - Scan `artifacts/` for existing artifacts — read their frontmatter to understand current coverage.
 - Read `sources/apis/` and `sources/schemas/` for extracted API specs and ERDs. These contain the complete endpoint maps and data models. If these directories are empty, note this and warn that Phase 1 will produce thinner results — suggest running `/reef:source` first.
 - Read `sources/infra/` for extracted infrastructure patterns — cloud storage path conventions, runtime topology, message queues. These are especially important for pipeline/orchestration services with few database entities. Infrastructure patterns feed into flow catalogs (3.13), storage-related PROC- artifacts, and service dependency analysis (3.0, 3.7).
+- Read `sources/context/` and `sources/raw/` for non-code context the user has provided — requirements docs, architecture decisions, SOPs, meeting notes, roadmaps, diagrams, or any other material. These are first-class sources: cite them in artifact `sources` fields, use them to resolve known_unknowns, and prefer them over code-inferred guesses for business intent, design rationale, and process definitions. If `sources/context/` is empty, that is fine — the reef works without it, but the artifacts will be code-only.
+- **New context alert.** If new context files are found that aren't yet referenced by any artifact, mention it before starting Phase 1: "I see you've added N new context files (list them). I'll use these as I deepen artifacts." No confirmation needed — just acknowledge so the user knows they'll be picked up.
 - Read all GLOSSARY- artifacts — these are needed for entity comparison and glossary cross-checking.
 - **Mine snorkel artifacts for deepening signals.** Read the full body (not just frontmatter) of every existing artifact — especially Key Facts, Core Concepts, and known_unknowns sections. Extract patterns, domain-specific mechanisms, and architectural findings that deserve deeper investigation. Examples of signals:
   - A named pattern (e.g., "outbox pattern", "saga orchestration", "event sourcing") → candidate for a PROC- or DEC- artifact documenting the mechanism
@@ -63,7 +65,8 @@ Walk up from cwd looking for a `.reef/` directory. That parent is the reef root.
 
   **Categorize each signal by depth level:**
   - **Scuba Phase 1**: understand the mechanism — what it is, which entities/services use it, how it works. Produces PROC-, DEC-, or CON- artifacts through code reading.
-  - **Interactive mode (PAT- candidates)**: patterns require understanding *why* a design choice was made, not just *that* it exists. A PAT- artifact documents a reusable architectural convention — the design intent, the trade-offs, the decision rule for when to use it vs alternatives. These emerge from noticing the same problem solved differently across boundaries, or the same convention applied consistently for a reason code alone doesn't explain. **Flag PAT- candidates during automated deepening but create them in interactive mode**, where the user can confirm the design intent.
+  - **Phase 1 (high-confidence PAT- candidates)**: patterns that `reef.py manifest` detected automatically — cross-service entity divergences and repeated architectural patterns (same concept modeled differently, same operational pattern implemented differently). These are planned in the manifest and produced during Phase 1 sub-step 3.9. They document what diverges and how, leaving design intent as a `known_unknown` for the user to fill in later.
+  - **Interactive mode (subjective PAT- candidates)**: patterns that require understanding *why* a design choice was made, not just *that* it exists — e.g., a convention applied consistently for a reason code alone doesn't explain. These emerge from human insight during the briefing. Flag them during automated deepening and surface them in the Step 4 PAT- callout.
   - **Deep**: trace the implementation exhaustively — field-by-field lineage, exact code paths, every edge case. Produces dense, line-cited artifacts. Flag these for `/reef:deep` rather than investigating in scuba.
 
   Collect Phase 1 signals into a list for sub-step 3.9. Collect PAT- candidates and deep-level signals into separate lists for the Phase 1 briefing.
@@ -112,7 +115,7 @@ The output includes `entity_tiering` (per-service Tier 1/2/3 counts and names) a
 
 - **Checklist B — SCH- field lineage:** For services with ingestion/ETL/transform logic, plan one SCH- field lineage artifact per entity group. Common signals: `*_hash` fields, snapshot tables, computed fields.
 - **Checklist E — Partial questions:** Read `.reef/questions.json`. For every `status: "partial"` question, check if a planned artifact addresses it. Add missing ones.
-- **Checklist F — Cross-system:** Flag PAT- candidates for interactive mode (not Phase 1). Plan PROC- multi-app comparisons and CON- entity comparisons if needed.
+- **Checklist F — Cross-system:** Include PAT- candidates from the manifest (auto-detected cross-service divergences and repeated architectural patterns). Plan PROC- multi-app comparisons and CON- entity comparisons if needed.
 - **Checklist G — Domain labeling:** Cross-system artifacts (CON- between services, GLOSSARY-UNIFIED, entity comparisons) must use the project-level domain slug from `project.json`.
 
 Add discovered items to the manifest's `planned` array and re-save `.reef/scuba-manifest.json`.
@@ -191,8 +194,8 @@ After writing each artifact, validate it against the minimum depth bar for its t
 |------|---------------|------------------|-------------------|------------------|
 | SYS- | 8 | 12-15 | Overview, Key Facts, Responsibilities, "Does NOT Own", Core Concepts, Dependencies table, Runtime Components, Related | — |
 | API- | 8 | 10-12 | Overview, Key Facts, Source of Truth, Resource Map, Worked Example, Related | — |
-| SCH- | 6 | 10-12 | Overview, Key Facts, Entities (with field tables), Related | Mermaid `erDiagram` (mandatory) |
-| PROC- (entity lifecycle) | 8 | 12-15 | Purpose, Key Facts, Fields table, Relationships, Creation path, States/Transitions, Agent Guidance, Related | Mermaid `stateDiagram-v2` if status field exists |
+| SCH- | 6 | 10-12 | Overview, Key Facts, Entities (with field tables), Worked Examples (queries + enum tables), Related | Mermaid `erDiagram` (mandatory) |
+| PROC- (entity lifecycle) | 8 | 12-15 | Purpose, Key Facts, Fields table, Relationships, Creation path, States/Transitions, Worked Examples (queries + enum tables), Agent Guidance, Related | Mermaid `stateDiagram-v2` if status field exists |
 | PROC- (flow/pipeline) | 8 | 10-12 | Purpose, Key Facts, Input/Output, Steps/Phases, Error Handling, Related | Mermaid `flowchart` or `sequenceDiagram` |
 | PROC- (operational) | 6 | 8-10 | Purpose, Key Facts, Scope, Current State, Related | — |
 | CON- | 6 | 8-10 | Parties, Key Facts, Agreement, Current State, Impact Analysis, Related | Mermaid `sequenceDiagram` |
@@ -379,17 +382,77 @@ Then:
 
 Present the coverage gaps and cross-system patterns from the gap detection above as a single numbered list. No artifact type prefixes in user-facing text. The user picks a number or names their own topic.
 
-Then present next steps:
+Then present the completion message and next steps. The tone should be celebratory — the user just completed a significant journey. Frame what they now have in terms of practical value, not artifact counts.
 
 ```
-Scuba complete. The reef now has {N} artifacts at draft depth.
+🎉 Scuba complete. Your reef is ready for real work.
 
-Next steps:
-- Pick a gap above to explore interactively — I'll ask questions, verify against code, and create artifacts from your answers.
-- `/reef:deep` — exhaustive line-by-line tracing of a specific area.
-- `/reef:test` — see how well the reef answers your questions right now.
-- `/reef:health` — check artifact freshness and coverage.
+You now have a structured knowledge base covering {N} artifacts across
+{S} services. This isn't just documentation — it's a working reference
+you can use to:
+
+  • Write scripts against your data model without reading source code
+  • Create test datasets using the right fields and relationships
+  • Draft tech proposals grounded in actual architecture
+  • Write requirements docs with full cross-service context
+  • Onboard teammates by pointing them at the reef instead of
+    scheduling walkthrough meetings
+
+The automated pipeline is done. What you have compounds from here —
+every question you explore makes the reef smarter.
+
+Have SRDs, design docs, SOPs, or meeting notes? Drop them into
+sources/context/ — the reef gets sharper when it knows the why
+behind the code, not just the what.
 ```
+
+After the celebration, present coverage gaps as numbered options (same as above).
+
+### PAT- candidate callout (MANDATORY if candidates exist)
+
+If the manifest includes PAT- entries or if the cross-service divergence scan (Step 2) flagged pattern candidates, present them explicitly:
+
+```
+📐 Pattern candidates detected: {N}
+
+The automated pipeline found {N} cross-service patterns worth documenting.
+These capture reusable design conventions — the "why" behind recurring
+structural choices:
+
+  {numbered list of PAT- candidates with plain-language descriptions,
+   e.g., "1. How 'order' is modeled differently across Payments vs Fulfillment vs Returns"
+         "2. Error handling conventions compared across all services"
+         "3. Authorization enforcement — same intent, different mechanisms"}
+
+Pick a number to create it now, or I can generate all {N} automatically.
+```
+
+**Rules for PAT- callout:**
+- Always show if any PAT- candidates exist (from manifest or from cross-service signals during Phase 1).
+- If the manifest planned PAT- entries and Phase 1 did not produce them, this is the recovery mechanism — they must be surfaced here.
+- Phrase each as the design question it answers, not an artifact ID.
+- Offer the option to generate all automatically — this is the aggressive path. Do not wait for interactive mode to produce patterns.
+- If the user says "generate all," create each PAT- artifact using the `references/templates/pattern.md` template. Read source code to fill in Design Intent, Trade-offs, and Where It Appears sections. Mark as `status: draft`.
+
+Then, **only if gaps exist that would benefit from line-by-line tracing**, add a soft lead-in to deep — framed through the gaps, not as a sales pitch:
+
+```
+Some areas have surface-level coverage where the real complexity lives
+in execution paths and edge cases:
+
+  {top 2-3 areas from deep-dive flags, phrased as curiosity hooks —
+   e.g., "How does the finalization flow actually enforce overlap
+   constraints?" not "PROC-PAYMENTS-ORDER-FINALIZATION needs deep tracing"}
+
+When you're curious about those, `/reef:deep` traces them line by line.
+No rush — the reef is already useful without it.
+```
+
+**Rules for the deep lead-in:**
+- Only show if Step 4's deep-dive flags identified concrete candidates.
+- Maximum 3 items. Pick the highest gap-to-value ratio (areas where scuba flagged known unknowns that matter for real tasks).
+- Phrase each as a question the user might actually wonder about, not an artifact ID or type prefix.
+- Never pressure. "When you're curious" / "when you're ready" — not "you should" or "recommended next step."
 
 If the user picks a gap or asks to explore a topic, enter **interactive mode** (below).
 

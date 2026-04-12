@@ -39,6 +39,20 @@ notes: ""
 
 {Repeat for each significant entity.}
 
+## Worked Examples
+
+### Common Queries
+
+{One or two representative join queries or access patterns showing how to use this schema. Use the actual table/collection names and field names from the schema above. Format as SQL, ORM pseudocode, or API call — whichever matches the tech stack.}
+
+### Enum Values
+
+{For every status, type, or category field in this schema, list all valid values with a one-line description of each. If exact values are unknown, add to known_unknowns instead of guessing.}
+
+| Field | Value | Meaning |
+|-------|-------|---------|
+| {field_name} | {value} | {what it means in the domain} |
+
 ## Related
 
 - [[{ARTIFACT_ID}]] -- {relationship description}

@@ -35,6 +35,7 @@ For each service with an extracted ERD in `sources/schemas/{service}/{sub}/schem
 
 **Quality mandates:**
 - Every SCH- **must** include a Mermaid `erDiagram` (RDB) or `classDiagram` (document store). No exceptions. Max 15 entities per diagram; split if larger.
+- Every SCH- **must** include a `### Worked Examples` subsection with: (a) at least one representative join query or access pattern using actual table/field names, and (b) an enum value table for every status, type, purpose, or category field. If exact enum values cannot be determined from code, add them to `known_unknowns` rather than guessing.
 - For document stores: additionally document embedded vs referenced in a dedicated subsection.
 
 ## 3.3 — Entity definition and lifecycle artifacts
@@ -58,6 +59,8 @@ For each Tier 1 entity:
    - **Creation path**: how instances come into existence (API endpoint, background job, migration)
    - **States**: if the entity has a status/state field, include a Mermaid `stateDiagram-v2` showing all states and transitions. If no status field, document the implicit lifecycle (created → used → archived/deleted).
    - **Agent Guidance section (REQUIRED)**: when to consult this artifact, common pitfalls, related artifacts to read together
+
+**Worked examples mandate:** Every entity lifecycle PROC- **must** include a `### Worked Examples` subsection with: (a) at least one representative query showing how to access this entity in context (joining to parent/child, filtering by status), and (b) an enum value table for every status, type, purpose, or category field. Use actual field names from the Fields table. If exact enum values cannot be determined from code, add them to `known_unknowns`.
 
 **Entity completeness check:** After generating all entity PROC- for a service, compare against the manifest's Tier 1 list. If any Tier 1 entity was skipped, go back and generate it.
 

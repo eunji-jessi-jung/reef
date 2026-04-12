@@ -42,7 +42,7 @@ Focus on terms that carry domain meaning — not generic programming terms. Incl
 - Entity names and what they represent
 - Status/state values and their business meaning
 - Acronyms used in this service's code
-- Domain-specific field names (e.g., "case_hash", "scan_type")
+- Domain-specific field names (e.g., "order_hash", "item_type")
 
 ## Disambiguation
 

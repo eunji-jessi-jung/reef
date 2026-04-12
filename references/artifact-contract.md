@@ -9,9 +9,9 @@ The enforceable rulebook for all Reef artifacts. Every skill that creates, updat
 | Type | Prefix | Purpose | Required Body Sections |
 |------|--------|---------|----------------------|
 | System | SYS- | Entry point for a domain or service | Overview, Key Facts, Responsibilities, Core Concepts, Related |
-| Schema | SCH- | Interpretation of data models | Overview, Key Facts, Entities, Related |
+| Schema | SCH- | Interpretation of data models | Overview, Key Facts, Entities, Worked Examples, Related |
 | API | API- | Interpretation of API surfaces | Overview, Key Facts, Source of Truth, Resource Map, Related |
-| Process | PROC- | Workflow, lifecycle, or behavior | Purpose, Key Facts + archetype-dependent body, Related |
+| Process | PROC- | Workflow, lifecycle, or behavior | Purpose, Key Facts + archetype-dependent body, Worked Examples (entity lifecycle and flow types), Related |
 | Decision | DEC- | Architectural decision record | Context, Decision, Key Facts, Rationale, Consequences, Related |
 | Glossary | GLOSSARY- | Domain term registry | Terms (table with wikilinks), Related |
 | Contract | CON- | Cross-system boundary agreement | Parties, Key Facts, Agreement, Current State, Related |

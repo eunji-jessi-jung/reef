@@ -34,7 +34,7 @@ reef skills:
     /reef:help        This screen
 
 Tip: Artifacts are wikilinked — open the reef directory as an Obsidian vault for graph visualization.
-Tip: Have docs that aren't in the codebase? Drop them in sources/raw/ and scuba will use them.
+Tip: Have SRDs, SOPs, meeting notes, or design docs? Drop them in sources/context/ and scuba will use them.
 ```
 
 ---
@@ -69,6 +69,23 @@ Reef: {name} ({path})
 
   Scuba manifest: {not found | N/M completed, K remaining}
 ```
+
+### 2.5 — New context alert
+
+Scan `sources/context/` and `sources/raw/` for files not referenced by any artifact's `sources` field. If new unreferenced files exist, append an alert to the status:
+
+```
+  New context:  3 files added since last update
+    sources/context/requirements/order-fulfillment-srd.pdf
+    sources/context/meetings/2026-04-10-platform-knowledge-share.md
+    sources/raw/data-flow-diagram.png
+
+  I noticed you added some context. Want to explore it together?
+  Run /reef:update to fold it into existing artifacts, or
+  /reef:deep to use it as a starting point for exploration.
+```
+
+If no new context files, skip this section entirely.
 
 ---
 

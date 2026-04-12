@@ -223,7 +223,7 @@ Update `.reef/project.json` with the source paths:
 
 Read the existing project.json first, then update — do not overwrite other fields.
 
-Do not mention `sources/raw/` here — it goes by too fast and gets buried. Snorkel's wrap-up is the better place to suggest adding docs, after the user has seen artifacts and knows what gaps exist.
+Do not explain `sources/context/` here — it goes by too fast and gets buried. Snorkel's wrap-up is the better place to suggest adding docs, after the user has seen artifacts and knows what gaps exist.
 
 ---
 

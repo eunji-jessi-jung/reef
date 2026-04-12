@@ -77,6 +77,26 @@ Run /reef:update to refresh stale artifacts.
 
 Populate each row from the lint and diff output. If a source or type has zero artifacts, still show the row with zeroes.
 
+### 3.5. Surface orphaned artifacts
+
+Scan all artifact files for `status: orphaned` in frontmatter. If any exist, add a section to the report:
+
+```
+Orphaned Artifacts — {N} marked
+────────────────────────────────────────────────
+  SCH-ORDERS-LEGACY-CART        orphaned {date}   model class removed
+  API-PLATFORM-ANALYTICS-V1    orphaned {date}   route prefix removed
+  PROC-PIPELINE-NIGHTLY-SYNC   orphaned {date}   source file deleted
+
+These were marked by /reef:update when their source code was removed.
+Delete them? Enter numbers (e.g. "1, 2"), "all", or "none".
+```
+
+- **On delete:** Remove the artifact file, clean up `relates_to` references in other artifacts, run `rebuild-index` and `rebuild-map`. Log the deletion.
+- **On keep:** Leave as-is. They will appear again on the next health check.
+
+If no orphaned artifacts exist, skip this section entirely.
+
 ### 4. Offer deeper checks (do not auto-run)
 
 After presenting the report, offer the LLM opt-in checks. Ask the user:
@@ -91,8 +111,8 @@ If the user accepts, run these:
 
 Report findings grouped by severity: contradictions first, then stale claims, then empty known_unknowns.
 
-After presenting results, remind the user: "Artifacts are wikilinked — open the reef directory as an Obsidian vault to explore the knowledge graph. Have docs that might fill gaps? Drop them in `sources/raw/`."
+After presenting results, remind the user: "Artifacts are wikilinked — open the reef directory as an Obsidian vault to explore the knowledge graph. Have docs that might fill gaps? Drop them in `sources/context/`."
 
 ## Important
 
-This skill is strictly read-only. Do not modify any artifact files, index files, or map files. If the user asks to fix something, direct them to `/reef:update` or `/reef:artifact`.
+This skill is read-only except for orphaned artifact cleanup (Step 3.5), which requires user confirmation. Do not modify artifact content, index files, or map files. If the user asks to fix stale content, direct them to `/reef:update` or `/reef:artifact`.

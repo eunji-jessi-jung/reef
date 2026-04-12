@@ -88,6 +88,20 @@ stateDiagram-v2
 
 {Repeat for each state.}
 
+## Worked Examples
+
+### Common Queries
+
+{One or two representative queries showing how to access this entity in context — e.g., joining to parent/child entities, filtering by status. Use actual table/field names from the Fields table above. Format as SQL, ORM pseudocode, or API call.}
+
+### Enum Values
+
+{For every status, type, purpose, or category field, list all valid values with meaning. If exact values are unknown, add to known_unknowns.}
+
+| Field | Value | Meaning |
+|-------|-------|---------|
+| {field_name} | {value} | {what it means} |
+
 ## Related
 
 - [[SYS-{SERVICE}]] -- parent system

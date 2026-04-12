@@ -223,7 +223,8 @@ def cmd_init(args) -> None:
     for subdir in ARTIFACT_SUBDIRS:
         (root / "artifacts" / subdir).mkdir(parents=True, exist_ok=True)
 
-    (root / "sources" / "raw").mkdir(parents=True, exist_ok=True)
+    for src_subdir in ["raw", "context/requirements", "context/decisions", "context/processes", "context/meetings", "context/roadmaps"]:
+        (root / "sources" / src_subdir).mkdir(parents=True, exist_ok=True)
 
     dot_reef = root / ".reef"
     dot_reef.mkdir(parents=True, exist_ok=True)
@@ -1261,6 +1262,25 @@ def _extract_entities_from_schema(schema_path: Path) -> list[dict]:
                           "_history", "_audit")
     MV_SUFFIXES = ("_mv", "_flat_mv")
 
+    # Count incoming FKs per entity (how many other entities reference this one)
+    incoming_fk_count: dict[str, int] = {}
+    for name, info in raw_entities.items():
+        for fk_field in info["fks"]:
+            # FK fields typically reference another entity: {entity}_id or {entity}_fk
+            ref_name = fk_field.lower().replace("_id", "").replace("_fk", "").replace(" ", "_")
+            for other_name in raw_entities:
+                if other_name.lower().replace(" ", "_") == ref_name:
+                    incoming_fk_count[other_name] = incoming_fk_count.get(other_name, 0) + 1
+                    break
+    # Also count junction table references (entity__entity patterns)
+    for name in raw_entities:
+        if JUNCTION_PATTERN.search(name):
+            parts = name.lower().split("__")
+            for part in parts:
+                for other_name in raw_entities:
+                    if other_name.lower().replace(" ", "_") == part:
+                        incoming_fk_count[other_name] = incoming_fk_count.get(other_name, 0) + 1
+
     entities = []
     for name, info in raw_entities.items():
         name_lower = name.lower()
@@ -1269,6 +1289,7 @@ def _extract_entities_from_schema(schema_path: Path) -> list[dict]:
         fk_count = len(info["fks"])
         has_status = info["has_status"]
         field_count = len(business_fields)
+        inbound_fks = incoming_fk_count.get(name, 0)
 
         # Tier 3: join tables, lookups, materialized views
         if JUNCTION_PATTERN.search(name):
@@ -1279,7 +1300,7 @@ def _extract_entities_from_schema(schema_path: Path) -> list[dict]:
             tier, reason = 3, "lookup table"
         elif any(name_lower.endswith(s) for s in EVENT_LOG_SUFFIXES):
             tier, reason = 2, "event log/audit table — document in parent lifecycle"
-        elif field_count <= 2 and fk_count == 0 and not has_status:
+        elif field_count <= 2 and fk_count == 0 and not has_status and inbound_fks < 3:
             tier, reason = 3, "trivial entity"
         # Data-companion entities: Tier 2 unless very complex
         elif name_lower.endswith("_data") and field_count <= 10:
@@ -1290,7 +1311,9 @@ def _extract_entities_from_schema(schema_path: Path) -> list[dict]:
         elif field_count > 5 and fk_count >= 1:
             tier, reason = 1, f"complex ({field_count} fields, {fk_count} FKs)"
         elif fk_count >= 3:
-            tier, reason = 1, f"highly connected ({fk_count} FKs)"
+            tier, reason = 1, f"highly connected ({fk_count} outgoing FKs)"
+        elif inbound_fks >= 3:
+            tier, reason = 1, f"highly referenced ({inbound_fks} incoming FKs)"
         # Tier 2: connected but no independent lifecycle
         else:
             tier, reason = 2, "connected but no independent lifecycle"
@@ -1300,6 +1323,7 @@ def _extract_entities_from_schema(schema_path: Path) -> list[dict]:
             "tier": tier,
             "fields_count": field_count,
             "fk_count": fk_count,
+            "inbound_fk_count": inbound_fks,
             "has_status": has_status,
             "reason": reason,
         })
@@ -1491,26 +1515,109 @@ def cmd_manifest(args) -> None:
             plan(aid, "system", source="checklist-A",
                  note="SYS- deepening: add dependencies, Does NOT Own, behavior highlights, runtime components")
 
-    # --- Checklist C: Individual flow PROC- from existing flow catalogs ---
-    flow_catalog_dir = reef / "artifacts" / "processes"
-    if flow_catalog_dir.is_dir():
-        for fpath in flow_catalog_dir.iterdir():
-            if "flow-catalog" in fpath.name and fpath.suffix == ".md":
-                try:
-                    catalog_text = fpath.read_text(encoding="utf-8")
-                except Exception:
-                    continue
-                # Extract service prefix from filename: proc-pipeline-flow-catalog.md -> PIPELINE
-                fname_parts = fpath.stem.replace("proc-", "").replace("-flow-catalog", "")
-                svc_prefix = fname_parts.upper()
-                # Find flow names referenced in the catalog (lines with flow- pattern)
-                for line in catalog_text.split("\n"):
-                    m = re.search(r"\[\[PROC-" + svc_prefix + r"-FLOW-([A-Z0-9-]+)\]\]", line, re.IGNORECASE)
-                    if m:
-                        flow_name = m.group(1).upper()
-                        aid = f"PROC-{svc_prefix}-FLOW-{flow_name}"
-                        plan(aid, "process", source="checklist-C",
-                             note="Individual flow from flow catalog")
+    # --- Checklist B2: PAT- from cross-service divergence signals ---
+    # Detect entities/concepts that appear in 2+ services with different structures.
+    # These are high-confidence pattern candidates that can be auto-generated.
+    if len(services) >= 2:
+        # Collect entity names per service
+        entities_per_service: dict[str, set[str]] = {}
+        for svc_upper, ents in all_entities_by_service.items():
+            entities_per_service[svc_upper] = {
+                e["name"].lower().replace("_", " ") for e in ents if e.get("tier", 3) <= 2
+            }
+
+        # Find entities that appear in 2+ services (cross-service divergence)
+        from collections import Counter
+        entity_service_count: dict[str, list[str]] = {}
+        for svc_upper, names in entities_per_service.items():
+            for name in names:
+                entity_service_count.setdefault(name, []).append(svc_upper)
+        shared_entities = {name: svcs for name, svcs in entity_service_count.items()
+                          if len(svcs) >= 2}
+        for entity_name, svcs in shared_entities.items():
+            slug = entity_name.upper().replace(" ", "-")
+            svc_pair = "-".join(sorted(svcs[:2]))
+            aid = f"PAT-{svc_pair}-{slug}-COMPARISON"
+            plan(aid, "pattern", source="cross-service-divergence",
+                 note=f"Entity '{entity_name}' appears in {', '.join(svcs)} with different structures")
+
+        # Detect repeated architectural patterns across services (error handling, auth, etc.)
+        # by checking which operational PROC- types exist across 2+ services
+        operational_patterns = {}
+        for _, fm in artifacts:
+            aid = fm.get("id", "").upper()
+            if aid.startswith("PROC-") and any(
+                aid.endswith(suffix) for suffix in ("-ERROR-HANDLING", "-AUTH", "-BACKGROUND-TASKS")
+            ):
+                # Extract the pattern type
+                for suffix in ("-ERROR-HANDLING", "-AUTH", "-BACKGROUND-TASKS"):
+                    if aid.endswith(suffix):
+                        pat_type = suffix.lstrip("-")
+                        operational_patterns.setdefault(pat_type, []).append(aid)
+                        break
+        for pat_type, proc_ids in operational_patterns.items():
+            if len(proc_ids) >= 2:
+                slug = pat_type.replace("-", "-")
+                aid = f"PAT-CROSS-SERVICE-{slug}"
+                if aid not in existing_ids:
+                    plan(aid, "pattern", source="cross-service-pattern",
+                         note=f"Same pattern ({pat_type}) found in {len(proc_ids)} services: {', '.join(proc_ids)}")
+
+    # --- Checklist C: Individual PROC- from catalog/inventory artifacts ---
+    # Generalised: works for flow catalogs, event catalogs, job catalogs, etc.
+    # Parses both wikilinks AND markdown table rows to discover items.
+    catalog_dir = reef / "artifacts" / "processes"
+    CATALOG_SUFFIXES = ("flow-catalog", "event-catalog", "job-catalog",
+                        "task-catalog", "catalog", "inventory")
+    if catalog_dir.is_dir():
+        for fpath in catalog_dir.iterdir():
+            if fpath.suffix != ".md":
+                continue
+            fname_lower = fpath.stem.lower()
+            matched_suffix = None
+            for suffix in CATALOG_SUFFIXES:
+                if fname_lower.endswith(suffix):
+                    matched_suffix = suffix
+                    break
+            if matched_suffix is None:
+                continue
+            try:
+                catalog_text = fpath.read_text(encoding="utf-8")
+            except Exception:
+                continue
+            # Extract service prefix: proc-pipeline-flow-catalog -> PIPELINE
+            prefix_part = fname_lower.replace("proc-", "").replace(f"-{matched_suffix}", "")
+            svc_prefix = prefix_part.upper()
+            # Determine item type slug from catalog suffix (flow-catalog -> FLOW)
+            item_slug = matched_suffix.replace("-catalog", "").replace("-inventory", "").upper()
+            if item_slug in ("", "CATALOG", "INVENTORY"):
+                item_slug = "ITEM"
+
+            found_items = set()
+            for line in catalog_text.split("\n"):
+                # Method 1: wikilinks [[PROC-SVC-FLOW-NAME]]
+                for m in re.finditer(r"\[\[PROC-" + svc_prefix + r"-" + item_slug + r"-([A-Z0-9-]+)\]\]", line, re.IGNORECASE):
+                    found_items.add(m.group(1).upper())
+                # Method 2: first column of markdown table rows (skip headers/separators)
+                if line.strip().startswith("|") and not set(line.strip().replace("|", "").strip()) <= {"-", " "}:
+                    cells = [c.strip() for c in line.split("|")]
+                    cells = [c for c in cells if c]
+                    if len(cells) >= 2:
+                        first_cell = cells[0]
+                        # Skip header rows (heuristic: header words)
+                        if first_cell.lower() in ("name", "flow", "event", "job", "task",
+                                                   "category", "type", "id", "#", ""):
+                            continue
+                        # Extract a slug from the first cell — could be a name or code identifier
+                        slug = re.sub(r"[^a-zA-Z0-9_-]", "-", first_cell).strip("-").upper()
+                        slug = re.sub(r"-+", "-", slug)
+                        if slug and len(slug) >= 3 and len(slug) <= 60:
+                            found_items.add(slug)
+
+            for item_name in sorted(found_items):
+                aid = f"PROC-{svc_prefix}-{item_slug}-{item_name}"
+                plan(aid, "process", source="checklist-C",
+                     note=f"Individual {item_slug.lower()} from {matched_suffix}")
 
     # --- Checklist D: Operational PROC- per service ---
     operational_types = [

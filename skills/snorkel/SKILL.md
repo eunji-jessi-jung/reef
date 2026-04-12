@@ -408,7 +408,17 @@ Next steps:
 
 If the key gaps include things that existing documents could answer (architecture decisions, deployment topology, authorization models, business rules), add:
 
-"Some of these gaps might be answered by existing docs — PRDs, architecture specs, design docs, SRS. If you have any, drop them into `sources/raw/` and the next pass will use them."
+"Code is the foundation, but some of these gaps live outside the codebase.
+Your reef has folders ready for real-world context:
+
+  sources/context/requirements/   — SRDs, PRDs, specs
+  sources/context/decisions/      — ADRs, design docs, architecture proposals
+  sources/context/processes/      — SOPs, runbooks, playbooks
+  sources/context/meetings/       — meeting notes, knowledge sharing transcripts
+  sources/context/roadmaps/       — roadmaps, OKRs, timelines
+  sources/raw/                    — anything else (diagrams, CSVs, PDFs)
+
+Drop whatever you have. The next pass (/reef:scuba) will use it all."
 
 Only mention this if the gaps are genuinely the kind that docs would fill. Do not mention it if the gaps are code-level (e.g., "unclear error handling in module X").
 
