@@ -154,7 +154,7 @@ Generate artifacts guided by what you learned. Every service has a **mandatory m
 
 ### Cross-service artifacts (generate ALL of these)
 
-7. **CON-** — one per service pair. For N services, generate exactly N×(N-1)/2 contracts. Name both parties, describe what flows between them (or note "no detected integration"). This is a completeness requirement — do not generate "some" and move on. **Domain labeling:** Cross-system artifacts (CON- between services, entity comparisons, unified glossary) must use the project-level domain slug from `project.json`, not a single service's domain. This ensures cross-system artifacts are discoverable and don't create false coverage gaps.
+7. **CON-** — one per service pair where integration is detected. Scan for HTTP calls, shared schemas, event publishing/consuming, or database sharing between services. Only create a CON- if actual cross-references exist — pairs with no detected integration do not need a contract artifact. **Domain labeling:** Cross-system artifacts (CON- between services, entity comparisons, unified glossary) must use the project-level domain slug from `project.json`, not a single service's domain.
 8. **GLOSSARY-** unified — one for the whole reef. Cross-service disambiguation (use the project-level domain slug from `project.json`). If you already have per-service glossaries, the unified glossary resolves conflicts and notes where the same term means different things.
 
 ### Conditional artifacts (generate when signal is present)
@@ -179,7 +179,7 @@ Service {name} artifact count:
 
 If any mandatory type shows 0, go back and generate it before proceeding. A thin draft is always better than a missing artifact — scuba needs the skeleton to build on.
 
-**Target: 6-10 artifacts per source.** For a 4-source reef, that means 24-40 service artifacts + N×(N-1)/2 contracts + 1 unified glossary. Multi-app sources (monorepos with 3+ sub-apps) should generate 8-12 artifacts.
+**Target: 6-10 artifacts per source.** For a 4-source reef, that means 24-40 service artifacts + detected-integration contracts + 1 unified glossary. Multi-app sources (monorepos with 3+ sub-apps) should generate 8-12 artifacts.
 
 **Parallelism:** Artifact generation is independent per service. Use the Agent tool to generate all artifacts for multiple services concurrently — launch one agent per service, each responsible for that service's full artifact batch (SYS-, SCH-, API-, PROC-, RISK-, etc.). All agents in a single message.
 

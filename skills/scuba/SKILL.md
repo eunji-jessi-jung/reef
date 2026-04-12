@@ -113,15 +113,13 @@ This command handles the following programmatically — **do NOT duplicate this 
   - Fuzzy token-overlap matching (e.g., "project" matches "acquisition project")
   - Glossary-based detection (reads GLOSSARY-UNIFIED disambiguation table)
   - Repeated operational patterns across services (AUTH, ERROR-HANDLING, etc.)
-- **Checklist C:** Individual PROC- from catalog/inventory artifacts
 - **Checklist D:** Operational PROC- per service (AUTH, ERROR-HANDLING)
 - **Checklist E:** FE/BE contracts (detects frontend/backend repo pairs per service)
-- **Checklist F (intra):** Intra-service data contracts (scans source index for hash, export, identifier, checksum, serializer, storage signals)
 - **Checklist F2:** Multi-app comparison PROC- (pairwise schema comparisons for services with multiple sub-apps)
 - **Checklist G:** SCH- field lineage (detects services with ingestion/ETL keywords)
 - Entity tiering (Tier 1/2/3 classification, multi-app dedup)
-- PROC count floor validation (`Tier 1 count + services × 3`)
-- CON- service pairs, RISK-, DEC-, GLOSSARY- per service
+- PROC count floor validation (`Tier 1 count + services × 2`)
+- RISK-, DEC-, GLOSSARY- per service
 
 The output includes `entity_tiering` (per-service Tier 1/2/3 counts and names) and `proc_floor` (floor check result). Report these to the user.
 
@@ -131,7 +129,7 @@ The script handles the bulk of manifest generation, but you MUST verify its outp
 
 1. **PAT- count check.** If the reef has 2+ services and the manifest has fewer than 3 PAT- artifacts, something is wrong. Check: does GLOSSARY-UNIFIED have a disambiguation table? Are entity names parseable from schema.md files? If the script missed divergences you can see in the glossary, add them manually.
 
-2. **CON- count check.** The manifest should have at minimum: N×(N-1)/2 service-pair contracts + FE/BE contracts (one per frontend repo) + intra-service contracts (from source index scanning). If CON- count equals exactly N×(N-1)/2 with nothing else, the FE/BE and intra-service detection may have failed — check the output.
+2. **CON- count check.** The manifest plans CON- only where actual cross-service integration or FE/BE pairs are detected. If the manifest has zero CON- for a multi-service reef, check whether cross-references exist in source code that the script missed. Add manually if needed. Service pairs with no detected integration do NOT need a CON- artifact.
 
 3. **PROC floor check.** The script reports `floor_met: true/false`. If false, identify the gap and add missing PROC- items (flow catalogs for non-pipeline services, multi-app comparisons, infrastructure PROC-).
 
@@ -237,7 +235,7 @@ After all agents in a batch return, before starting the next batch:
 
 ### Human review checkpoint (MANDATORY between batch rounds)
 
-After each sequential round completes (Batch 0 → Batches 1-3 → Batches 4a-4c → Batches 5a-5b), pause for human review before starting the next round:
+After each sequential round completes (Batch 0 → Batches 1-3 → Batches 4a-4b → Batches 5a-5b), pause for human review before starting the next round:
 
 1. **Pick 2-3 artifacts from the round** — choose the most complex ones (highest relates_to count, largest entities, cross-service artifacts).
 2. **Show the user a concise summary** of each: title, Key Facts count, known_unknowns, and 3-4 of the most important Key Facts verbatim.
@@ -279,10 +277,8 @@ An artifact that does not meet its minimum Key Facts count is **not complete**. 
 
 - `sources`: Must list at least 1 source file path. Empty `sources: []` is a failure — every artifact comes from reading specific files. If you read files to write the artifact, list them.
 - `freshness_triggers`: Must list at least 1 file glob. These are the files that, if changed, would make this artifact stale. If you don't know what would invalidate this artifact, you don't understand it well enough to write it.
-- `known_unknowns`: Must be present (can be empty `[]` only if you genuinely have no open questions — but be honest). Artifacts generated from catalog breakout especially tend to have gaps; acknowledge them.
+- `known_unknowns`: Must be present (can be empty `[]` only if you genuinely have no open questions — but be honest).
 - `relates_to`: Must list at least 1 related artifact. No artifact exists in isolation.
-
-These requirements apply equally to individually-planned artifacts and catalog-breakout artifacts. Breakout artifacts are NOT exempt from quality standards.
 
 **Known-unknowns resolution (for updates):** When updating an existing artifact, read its `known_unknowns` list first. For each item, attempt to resolve it by reading the relevant source code. Resolved items become Key Facts (with `→ source`). Unresolvable items stay in `known_unknowns`. This is the single highest-ROI quality action — the gaps are already identified.
 
@@ -294,21 +290,18 @@ These requirements apply equally to individually-planned artifacts and catalog-b
 | 1. Spec Layer | 3.1, 3.2 | API patterns + Schema docs | One agent per service | ~3-5 |
 | 2. Entity Deep-Dive | 3.3, 3.15, 3.16 | Entity lifecycles + per-collection SCH- + field lineage | One agent per service | ~5-15 |
 | 3. Service Signals | 3.4, 3.6, 3.10, 3.13 | Auth + error handling + risks + flow catalogs | One agent per service | ~4 |
-| 4a. Service Pair CON | 3.7 | Service-pair contracts (N×(N-1)/2) | One agent per pair | 1 |
-| 4b. Intra-service CON | 3.7b | Intra-service data contracts | One agent per service | ~1-3 |
-| 4c. Comparisons | 3.5, 3.8, 3.14 | FE/BE contracts + entity comparisons + multi-app comparisons | One agent per service | ~2-5 |
+| 4a. Service Pair CON | 3.7 | Service-pair contracts (only detected integrations) | One agent per pair | 1 |
+| 4b. Comparisons | 3.5, 3.8, 3.14 | FE/BE contracts + entity comparisons + multi-app comparisons | One agent per service | ~2-5 |
 | 5a. PAT | 3.9 | Pattern artifacts from manifest + deepening signals | One agent for ALL PAT items | all PAT |
 | 5b. DEC + GLOSSARY | 3.11, 3.12 | Decisions + per-service glossaries | One agent per service | ~2 |
 
-**Why 8 batches instead of 6:** Previous iterations showed that bundling CON service-pairs with intra-service CON and comparisons into one batch caused agents to complete the first sub-step and silently drop the rest. Same for bundling PAT with DEC/GLOSSARY. Each artifact type that has been dropped in prior iterations now gets its own batch.
-
-**Batch 4b is critical.** Intra-service CON artifacts (identifier conventions, export formats, path construction, auth models, event schemas) are the most commonly dropped artifact type. They require scanning service internals for specific signal files — a different task than writing service-pair contracts. A dedicated agent per service ensures they are not lost.
+**Why 7 batches instead of 6:** Previous iterations showed that bundling CON service-pairs with comparisons into one batch caused agents to complete the first sub-step and silently drop the rest. Same for bundling PAT with DEC/GLOSSARY. Each artifact type that has been dropped in prior iterations now gets its own batch.
 
 **Batch 5a is critical.** PAT artifacts require reading artifacts from multiple services to compare divergences. They are a synthesis task, not a per-service task. One dedicated agent handles ALL manifest-planned PAT items plus any PAT candidates flagged during Phase 1. This agent gets the full list of PAT IDs and must write every one.
 
-Batch 0 runs first. Batches 1-3 run concurrently. Batches 4a-4c run concurrently (after 1-3). Batches 5a-5b run concurrently (after 4a-4c).
+Batch 0 runs first. Batches 1-3 run concurrently. Batches 4a-4b run concurrently (after 1-3). Batches 5a-5b run concurrently (after 4a-4b).
 
-**Minimum execution:** 4 sequential rounds (Batch 0 → Batches 1-3 → Batches 4a-4c → Batches 5a-5b), each internally parallel. Run the **batch verification gate** between every round.
+**Minimum execution:** 4 sequential rounds (Batch 0 → Batches 1-3 → Batches 4a-4b → Batches 5a-5b), each internally parallel. Run the **batch verification gate** between every round.
 
 **Read `references/scuba-phase1-substeps.md`** for full details on every sub-step (3.0–3.16). The reference file is the source of truth for what each sub-step does, what templates to use, and what completeness checks to run.
 
@@ -321,21 +314,20 @@ Batch 0 runs first. Batches 1-3 run concurrently. Batches 4a-4c run concurrently
 | 3.2 Schema docs | 1 | SCH- | Requires Mermaid erDiagram |
 | 3.3 Entity lifecycles | 2 | PROC- lifecycle | One per Tier 1 entity; stateDiagram if status field |
 | 3.4 Auth boundaries | 3 | PROC- operational | One per service |
-| 3.5 FE/BE contracts | 4c | CON- | Skip if no frontend repos |
+| 3.5 FE/BE contracts | 4b | CON- | Skip if no frontend repos |
 | 3.6 Error handling | 3 | PROC- or RISK- | One per service |
-| 3.7 Service pair CON | 4a | CON- pair | **One agent per pair**; count must = N×(N-1)/2 |
-| 3.7b Intra-service CON | 4b | CON- intra | **Dedicated agent per service**; items tagged `checklist-F-intra` |
-| 3.8 Entity comparison | 4c | CON- | Skip for single-service reefs |
+| 3.7 Service pair CON | 4a | CON- pair | **One agent per pair**; only for pairs with detected integration |
+| 3.8 Entity comparison | 4b | CON- | Skip for single-service reefs |
 | 3.9 PAT- generation | 5a | PAT- | **ONE agent for ALL PAT items**; must write every manifest-planned PAT |
 | 3.10 RISK- | 3 | RISK- | Severity by density |
 | 3.11 DEC- | 5b | DEC- | ADR format |
 | 3.12 GLOSSARY- | 5b | GLOSSARY- | Per-service + SOURCE-INDEX |
 | 3.13 Flow catalogs | 3 | PROC- flow | Skip if no pipelines |
-| 3.14 Multi-app comparison | 4c | PROC- comparison | Skip for single-app services |
+| 3.14 Multi-app comparison | 4b | PROC- comparison | Skip for single-app services |
 | 3.15 Per-collection SCH- | 2 | SCH- | 3+ collections only |
 | 3.16 Field lineage | 2 | SCH- lineage | Skip for simple CRUD |
 
-**Batches 4b and 5a are the most critical.** Intra-service CON and PAT artifacts are the most commonly dropped types in prior iterations. They each have dedicated batches with isolated agents specifically to prevent this. Do NOT merge them with other batches for "efficiency."
+**Batch 5a is the most critical.** PAT artifacts are the most commonly dropped type in prior iterations. They have a dedicated batch with an isolated agent specifically to prevent this. Do NOT merge PAT with other batches for "efficiency."
 
 ---
 

@@ -109,43 +109,16 @@ For each service:
 
 ## 3.7 — Service pair contracts
 
-Generate a CON- artifact for every pair of services. N services = N×(N-1)/2 contracts.
+Generate a CON- artifact for each service pair where cross-service integration is detected. Only plan CON- where actual references exist — pairs with no integration do not need a contract artifact.
 
 **Template:** Follow `references/templates/contract-service-pair.md` exactly.
 
-For each pair:
+For each manifest-planned pair:
 
 1. Scan both services' code for references to the other (HTTP client calls, shared schemas, event publishing/consuming, database sharing).
-2. If integration detected: document endpoints called, auth model, data shapes, failure behavior. Include a **Mermaid `sequenceDiagram`** for the primary call flow. Add an `## Impact Analysis` subsection documenting what breaks if either service changes its API.
-3. If no integration detected: use the "No Integration Detected" template section. This confirms architectural separation.
-
-**Completeness check:** After all contracts are written, count them. Must have exactly N×(N-1)/2 CON- artifacts.
+2. Document endpoints called, auth model, data shapes, failure behavior. Include a **Mermaid `sequenceDiagram`** for the primary call flow. Add an `## Impact Analysis` subsection documenting what breaks if either service changes its API.
 
 After all pairs, add a summary heat map table to the briefing showing coupling ratings.
-
-## 3.7b — Intra-service data contracts [Batch 4b — dedicated agent per service]
-
-**BATCH ISOLATION:** This sub-step runs in its own batch (4b) with one dedicated agent per service. It must NOT be bundled with service-pair contracts (3.7). The manifest lists intra-service CON items with `source: "checklist-F-intra"`. Each agent receives ONLY the intra-service CON items for its service and must write every one. If the manifest has zero intra-service CON for a service, skip that service.
-
-Service-pair contracts (3.7) capture how services talk to each other. But services also define **internal data contracts** — conventions for identifiers, encoding rules, export formats, path structures, authorization models, and event schemas that external consumers or other services implicitly depend on. These are discoverable from code.
-
-For each service, scan for these signals:
-
-1. **Identifier/hash conventions.** Look for modules containing: hash generation functions, ID construction utilities, salt/seed management, checksum algorithms. Signals: filenames with `hash`, `identifier`, `id_gen`, `checksum`; functions that combine multiple fields into a single key; custom `__hash__` implementations on domain entities. If found → CON- artifact documenting the identifier contract (algorithm, inputs, uniqueness scope, collision handling).
-
-2. **Export/serialization formats.** Look for modules that define structured output formats: CSV column definitions, JSON schema builders, report generators, file format writers. Signals: explicit column name lists, `Serializer` classes, `to_csv`/`to_json`/`to_parquet` methods with format logic (not just `json.dumps`), template-based report generation. If found → CON- artifact documenting the export contract (format, columns/fields, conditional behavior, versioning).
-
-3. **Path construction conventions.** Look for utilities that build structured file/object paths with meaningful segments (e.g., `{project}/{dataset}/{split}/{filename}`). Signals: path builder functions, storage path constants with format strings, directory naming conventions. If found → CON- artifact documenting the path contract (segment semantics, naming rules, zone conventions).
-
-4. **Authorization model definitions.** Look for RBAC/ABAC model definitions: permission enums, role hierarchies, policy classes, resource type registries. Signals: `Permission`, `Role`, `Policy`, `ResourceType` classes or enums; decorator-based access control with explicit permission names. If found and the auth model is substantial (5+ distinct permissions or roles) → CON- artifact documenting the authorization contract (primitives, hierarchy, enforcement points).
-
-5. **Event/message schema definitions.** Look for event envelope schemas, message payload definitions, or contract classes for async communication. Signals: event classes with required fields, schema registries, payload validators, OpenLineage facets, CloudEvents builders. If found → CON- artifact documenting the event contract (envelope structure, required fields, schema versioning).
-
-**Rules:**
-- Only create a CON- if the signal is substantial (not a trivial utility). A 5-line hash function doesn't warrant a contract artifact; a module with salt management, scope rules, and cross-system propagation does.
-- Use `references/templates/contract.md` (generic), not the service-pair template.
-- **Parties** should name the service as provider and describe who the consumers are (other services, external systems, human operators).
-- These are **intra-service contracts exposed to the outside** — they define what other systems can depend on.
 
 ## 3.8 — Cross-service entity comparison
 

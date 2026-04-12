@@ -1446,15 +1446,10 @@ def cmd_manifest(args) -> None:
             "tier1_entities": tier1_names,
         }
 
-    # 4. CON- service pairs (combinatorial)
-    n = len(services)
-    for i in range(n):
-        for j in range(i + 1, n):
-            a = services[i]["name"].upper()
-            b = services[j]["name"].upper()
-            pair = tuple(sorted([a, b]))
-            aid = f"CON-{pair[0]}-{pair[1]}"
-            plan(aid, "contract", source="cross-service")
+    # 4. CON- service pairs (only where cross-service integration is detected)
+    # Combinatorial N×(N-1)/2 removed — pairs with no integration don't
+    # warrant a full artifact. Scuba sub-step 3.7 still creates CON- for
+    # pairs where it finds actual cross-references in source code.
 
     # 5. RISK- per service
     for svc in services:
@@ -1741,67 +1736,10 @@ def cmd_manifest(args) -> None:
                 plan(aid, "contract", source="checklist-E",
                      note=f"Frontend-backend contract: {fe} -> backend")
 
-    # --- Checklist F: Intra-service data contracts (sub-step 3.7b) ---
-    # Scan source index for signal files indicating internal contracts.
-    # Broadened signals: covers identity, serialization, path conventions,
-    # auth models, event schemas, and orchestration conventions.
-    intra_contract_signals = {
-        "hash": "Identifier/hash conventions",
-        "identifier": "Identifier conventions",
-        "id_gen": "ID generation",
-        "checksum": "Checksum conventions",
-        "export": "Export/serialization formats",
-        "serializer": "Export/serialization formats",
-        "schema_registry": "Export/serialization formats",
-        "path_builder": "Path construction conventions",
-        "storage_path": "Path construction conventions",
-        "naming_convention": "Path construction conventions",
-        "authz": "Authorization model",
-        "authorization": "Authorization model",
-        "permission": "Authorization model",
-        "policy": "Authorization model",
-        "rbac": "Authorization model",
-        "event_schema": "Event/message schema conventions",
-        "message_schema": "Event/message schema conventions",
-        "event_type": "Event/message schema conventions",
-        "flow_config": "Orchestration conventions",
-        "task_config": "Orchestration conventions",
-        "deployment": "Orchestration conventions",
-    }
-    source_index_path = reef / ".reef" / "source-index.json"
-    if source_index_path.is_file():
-        try:
-            source_index_raw = json.loads(source_index_path.read_text(encoding="utf-8"))
-            source_index = source_index_raw.get("sources", source_index_raw)
-            for svc in services:
-                svc_upper = svc["name"].upper()
-                svc_source_names = set(svc.get("sources", []))
-                found_signals: dict[str, list[str]] = {}  # signal_type -> [file_paths]
-                for src_name, src_data in source_index.items():
-                    if src_name not in svc_source_names:
-                        continue
-                    files = src_data.get("files", [])
-                    if isinstance(files, dict):
-                        file_list = list(files.keys())
-                    elif isinstance(files, list):
-                        file_list = files
-                    else:
-                        continue
-                    for fpath in file_list:
-                        fpath_lower = fpath.lower()
-                        fname = fpath_lower.rsplit("/", 1)[-1] if "/" in fpath_lower else fpath_lower
-                        for signal_key, signal_desc in intra_contract_signals.items():
-                            if signal_key in fname:
-                                found_signals.setdefault(signal_desc, []).append(fpath)
-                                break
-                for signal_desc, files in found_signals.items():
-                    if len(files) >= 1:
-                        slug = signal_desc.upper().replace(" ", "-").replace("/", "-")
-                        aid = f"CON-{svc_upper}-{slug}"
-                        plan(aid, "contract", source="checklist-F-intra",
-                             note=f"Intra-service contract: {signal_desc} ({len(files)} signal files)")
-        except Exception:
-            pass
+    # --- Checklist F removed ---
+    # Intra-service data contracts (signal-based: hash, serializer, authz, etc.)
+    # were producing shallow artifacts with low practical utility. These internal
+    # conventions are better documented as sections within SYS- or SCH- artifacts.
 
     # --- Checklist F2: Multi-app comparison PROC- (sub-step 3.14) ---
     # For services with multiple sub-apps sharing entities, plan comparison artifacts
@@ -1861,61 +1799,10 @@ def cmd_manifest(args) -> None:
             plan(aid, "schema", source="checklist-G",
                  note="Field lineage tracing for ingestion/ETL entities")
 
-    # --- Checklist C: Individual PROC- from catalog/inventory artifacts ---
-    # Generalised: works for flow catalogs, event catalogs, job catalogs, etc.
-    # Parses both wikilinks AND markdown table rows to discover items.
-    catalog_dir = reef / "artifacts" / "processes"
-    CATALOG_SUFFIXES = ("flow-catalog", "event-catalog", "job-catalog",
-                        "task-catalog", "catalog", "inventory")
-    if catalog_dir.is_dir():
-        for fpath in catalog_dir.iterdir():
-            if fpath.suffix != ".md":
-                continue
-            fname_lower = fpath.stem.lower()
-            matched_suffix = None
-            for suffix in CATALOG_SUFFIXES:
-                if fname_lower.endswith(suffix):
-                    matched_suffix = suffix
-                    break
-            if matched_suffix is None:
-                continue
-            try:
-                catalog_text = fpath.read_text(encoding="utf-8")
-            except Exception:
-                continue
-            # Extract service prefix: proc-pipeline-flow-catalog -> PIPELINE
-            prefix_part = fname_lower.replace("proc-", "").replace(f"-{matched_suffix}", "")
-            svc_prefix = prefix_part.upper()
-            # Determine item type slug from catalog suffix (flow-catalog -> FLOW)
-            item_slug = matched_suffix.replace("-catalog", "").replace("-inventory", "").upper()
-            if item_slug in ("", "CATALOG", "INVENTORY"):
-                item_slug = "ITEM"
-
-            found_items = set()
-            for line in catalog_text.split("\n"):
-                # Method 1: wikilinks [[PROC-SVC-FLOW-NAME]]
-                for m in re.finditer(r"\[\[PROC-" + svc_prefix + r"-" + item_slug + r"-([A-Z0-9-]+)\]\]", line, re.IGNORECASE):
-                    found_items.add(m.group(1).upper())
-                # Method 2: first column of markdown table rows (skip headers/separators)
-                if line.strip().startswith("|") and not set(line.strip().replace("|", "").strip()) <= {"-", " "}:
-                    cells = [c.strip() for c in line.split("|")]
-                    cells = [c for c in cells if c]
-                    if len(cells) >= 2:
-                        first_cell = cells[0]
-                        # Skip header rows (heuristic: header words)
-                        if first_cell.lower() in ("name", "flow", "event", "job", "task",
-                                                   "category", "type", "id", "#", ""):
-                            continue
-                        # Extract a slug from the first cell — could be a name or code identifier
-                        slug = re.sub(r"[^a-zA-Z0-9_-]", "-", first_cell).strip("-").upper()
-                        slug = re.sub(r"-+", "-", slug)
-                        if slug and len(slug) >= 3 and len(slug) <= 60:
-                            found_items.add(slug)
-
-            for item_name in sorted(found_items):
-                aid = f"PROC-{svc_prefix}-{item_slug}-{item_name}"
-                plan(aid, "process", source="checklist-C",
-                     note=f"Individual {item_slug.lower()} from {matched_suffix}")
+    # --- Checklist C removed ---
+    # Automatic catalog breakout (individual PROC- from catalog table rows)
+    # produced shallow artifacts without domain context. Individual flows/events/jobs
+    # are better handled in the deep-dive phase where domain expertise is applied.
 
     # --- Checklist D: Operational PROC- per service ---
     operational_types = [
@@ -1936,7 +1823,7 @@ def cmd_manifest(args) -> None:
                            if e["type"] == "process" and e["id"].upper() in existing_ids)
     # Total = new planned + existing (avoid double-counting updates)
     proc_total = proc_planned + proc_existing - proc_in_manifest
-    proc_floor = all_tier1_count + len(services) * 3
+    proc_floor = all_tier1_count + len(services) * 2
     floor_met = proc_total >= proc_floor
 
     # Deduplicate (same ID planned multiple times)

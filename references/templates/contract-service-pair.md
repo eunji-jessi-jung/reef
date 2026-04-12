@@ -4,7 +4,7 @@ Use this template for CON- artifacts that document the integration contract betw
 
 **Naming convention:** `con-{service-a}-{service-b}` (alphabetical order, e.g., `con-auth-payments`, `con-payments-fulfillment`)
 
-**When to use:** For every service pair in the reef, combinatorially. N services = N*(N-1)/2 contracts. All pairs must be covered — including pairs with no detected integration (documenting absence is valuable).
+**When to use:** For service pairs where actual cross-service integration is detected (HTTP calls, shared schemas, events, DB sharing). Pairs with no detected integration do NOT need a CON- artifact — architectural separation is the default assumption.
 
 ---
 
