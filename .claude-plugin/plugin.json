@@ -1,0 +1,7 @@
+{
+  "name": "reef",
+  "description": "Build structured knowledge wikis from codebases. Progressive depth: auto-discovery, Socratic deepening, exhaustive tracing. Obsidian-native, local-first, plain markdown.",
+  "author": {
+    "name": "Eunji Jung"
+  }
+}
