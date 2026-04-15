@@ -34,7 +34,7 @@ reef skills:
     /reef:help        This screen
 
 Tip: Artifacts are wikilinked — open the reef directory as an Obsidian vault for graph visualization.
-Tip: Have SRDs, SOPs, meeting notes, or design docs? Drop them in sources/context/ and scuba will use them.
+Tip: Have PRDs, SOPs, meeting notes, or design docs? Drop them in sources/context/ and scuba will use them.
 ```
 
 ---
