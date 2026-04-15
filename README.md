@@ -108,3 +108,14 @@ Artifacts are wikilinked with `[[artifact-id]]` syntax — open the reef directo
 ## Adding Your Own Docs
 
 Have architecture docs, design specs, or runbooks that aren't in the codebase? Drop them into `sources/raw/` in your reef directory. Scuba will pick them up when deepening artifacts — they're especially useful for answering questions that code alone can't.
+
+## See It in Action
+
+**[supabase-reef](https://github.com/eunji-jessi-jung/supabase-reef)** — a complete reef covering 5 Supabase repos (Go, Elixir, TypeScript, React) built by a PM with zero Supabase knowledge. Includes a [benchmark report](https://github.com/eunji-jessi-jung/supabase-reef/blob/main/reef-benchmark-report.md) testing whether the reef actually helps AI agents (28 runs, 2 models, 7 tasks, with honest caveats).
+
+## Author
+
+**Eunji Jung** — Product Manager building tools for AI-assisted software engineering.
+
+- [LinkedIn](https://www.linkedin.com/in/eunji-jessi-jung/)
+- Questions or feedback? [Open an issue](https://github.com/eunji-jessi-jung/reef/issues)
