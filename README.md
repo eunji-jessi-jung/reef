@@ -45,6 +45,7 @@ Then, in any project directory:
 | `/reef:update` | Pull sources, detect changes, generate update report for review |
 | `/reef:lint` | Lint artifacts for format and structural errors, with auto-fix |
 | `/reef:health` | Read-only validation and freshness report |
+| `/reef:feed` | Scan for new context files and connect them to the reef |
 | `/reef:test` | Test whether the reef answers your real questions |
 
 ## When to Use Each Depth
