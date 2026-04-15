@@ -133,7 +133,7 @@ From the reef reading in Step 3, identify areas where surface-level coverage hid
 After the topology and questions, invite the user to contribute context that never made it into code:
 
 ```
-If you have design docs, SRDs, runbooks, or incident postmortems that
+If you have design docs, PRDs, runbooks, or incident postmortems that
 capture why things were built the way they are — drop them into
 sources/context/ (by type) or sources/raw/ (anything else). I'll use
 them to surface questions that code alone can't answer.

@@ -410,7 +410,7 @@ If the key gaps include things that existing documents could answer (architectur
 "Code is the foundation, but some of these gaps live outside the codebase.
 Your reef has folders ready for real-world context:
 
-  sources/context/requirements/   — SRDs, PRDs, specs
+  sources/context/requirements/   — PRDs, specs, requirements docs
   sources/context/decisions/      — ADRs, design docs, architecture proposals
   sources/context/processes/      — SOPs, runbooks, playbooks
   sources/context/meetings/       — meeting notes, knowledge sharing transcripts

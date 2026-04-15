@@ -256,7 +256,7 @@ Scan `sources/context/` and `sources/raw/` for files that are not yet referenced
 If new context files are found:
 1. Read each file (supports .md, .txt, .pdf, .csv — skip binary files other than PDF).
 2. Match content against existing artifacts' `known_unknowns`. If a context doc answers or partially answers a known_unknown, flag that artifact for update.
-3. Match against artifact topics more broadly — an SRD about the order fulfillment system is relevant to PROC- and SCH- artifacts covering that feature.
+3. Match against artifact topics more broadly — a PRD about the order fulfillment system is relevant to PROC- and SCH- artifacts covering that feature.
 
 If no new context files found, skip silently.
 
