@@ -1,7 +1,14 @@
 {
   "name": "reef",
-  "description": "Build structured knowledge wikis from codebases. Progressive depth: auto-discovery, Socratic deepening, exhaustive tracing. Obsidian-native, local-first, plain markdown.",
+  "version": "1.0.0",
+  "description": "Structured knowledge wiki generator for codebases. Auto-discovers services, APIs, schemas, and cross-system contracts, then deepens through guided Q&A. Obsidian-native, local-first.",
   "author": {
-    "name": "Eunji Jung"
-  }
+    "name": "Eunji Jung",
+    "email": "eunji.jessi.jung@gmail.com",
+    "url": "https://www.linkedin.com/in/eunji-jessi-jung/"
+  },
+  "homepage": "https://github.com/eunji-jessi-jung/reef",
+  "repository": "https://github.com/eunji-jessi-jung/reef",
+  "license": "Apache-2.0",
+  "category": "productivity"
 }
