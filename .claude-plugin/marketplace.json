@@ -1,6 +1,8 @@
 {
-  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
   "name": "reef-marketplace",
+  "metadata": {
+    "description": "Structured knowledge wiki generator for codebases"
+  },
   "owner": {
     "name": "Eunji Jung"
   },
