@@ -1,6 +1,6 @@
 {
   "name": "reef",
-  "version": "1.1.3",
+  "version": "1.1.4",
   "description": "Structured knowledge wiki generator for codebases. Auto-discovers services, APIs, schemas, and cross-system contracts, then deepens through guided Q&A. Obsidian-native, local-first.",
   "author": {
     "name": "Eunji Jung",

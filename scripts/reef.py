@@ -304,15 +304,21 @@ def cmd_index(args) -> None:
     for src in sources_cfg:
         # Each source can be a string path or a dict with name/path
         if isinstance(src, dict):
-            src_path = resolve_source_path(reef, src["path"])
+            configured = str(src["path"])
+            src_path = resolve_source_path(reef, configured)
             src_name = src.get("name", src_path.name)
         else:
-            src_path = resolve_source_path(reef, src)
+            configured = str(src)
+            src_path = resolve_source_path(reef, configured)
             src_name = src_path.name
+
+        # Record the configured path, not the resolved one. The index is committed
+        # alongside the reef, and writing the resolved path would put the author's
+        # home directory into every published copy.
 
         if not src_path.is_dir():
             result_sources[src_name] = {"files_indexed": 0, "skipped": 0}
-            index_data["sources"][src_name] = {"path": str(src_path), "files": {}}
+            index_data["sources"][src_name] = {"path": configured, "files": {}}
             continue
 
         files_indexed = 0
@@ -345,7 +351,7 @@ def cmd_index(args) -> None:
                     skipped += 1
 
         index_data["sources"][src_name] = {
-            "path": str(src_path),
+            "path": configured,
             "files": files_map,
         }
         result_sources[src_name] = {
