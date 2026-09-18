@@ -25,14 +25,22 @@ Find the `.reef/` directory in cwd or parents. Read `project.json` from the reef
 
 ### 2. Run script checks
 
-Run both commands:
+Run all three, in this order:
 
 ```bash
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/reef.py index --reef <reef-root>
 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/reef.py lint --reef <reef-root>
 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/reef.py diff --reef <reef-root>
 ```
 
-These cover the seven mechanical checks:
+**`index` first is mandatory.** `diff` compares artifact snapshots against
+`.reef/source-index.json`, not against the files on disk. Without a fresh index it
+reports the state of the last indexing run — so a reef whose sources have changed since
+then comes back clean, which is the single worst thing a health check can do. Re-indexing
+rewrites only `.reef/source-index.json`; no artifact is touched, so this skill stays
+read-only with respect to the reef's content.
+
+`lint` and `diff` cover the seven mechanical checks:
 
 1. **Orphan detection** — artifacts with no incoming `relates_to` (except `SYS-` roots, which are natural entry points).
 2. **Dangling references** — `relates_to` targets that do not resolve to an existing artifact file.

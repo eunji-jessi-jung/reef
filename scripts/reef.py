@@ -2376,7 +2376,7 @@ def main() -> None:
     p_snap.set_defaults(func=cmd_snapshot)
 
     # diff
-    p_diff = sub.add_parser("diff", help="Diff current sources against artifact snapshots")
+    p_diff = sub.add_parser("diff", help="Diff the source index against artifact snapshots (run `index` first — this does not stat the disk)")
     p_diff.add_argument("--reef", default=None, help="Path to reef root")
     p_diff.set_defaults(func=cmd_diff)
 
