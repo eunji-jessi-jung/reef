@@ -101,6 +101,19 @@ def find_reef_root(override: str | None = None) -> Path:
     return Path()  # unreachable, satisfies type checker
 
 
+def resolve_source_path(reef: Path, raw: str) -> Path:
+    """Resolve a configured source path.
+
+    Absolute paths are used as-is. A relative path is resolved against the reef
+    root, not the current working directory, so a reef stays portable: clone it
+    next to the repositories it documents and it works from anywhere. Published
+    reefs should use relative paths — an absolute one carries the author's home
+    directory into the repository.
+    """
+    p = Path(raw).expanduser()
+    return p.resolve() if p.is_absolute() else (reef / p).resolve()
+
+
 def read_json(path: Path) -> dict | list:
     try:
         return json.loads(path.read_text(encoding="utf-8"))
@@ -291,10 +304,10 @@ def cmd_index(args) -> None:
     for src in sources_cfg:
         # Each source can be a string path or a dict with name/path
         if isinstance(src, dict):
-            src_name = src.get("name", Path(src["path"]).name)
-            src_path = Path(src["path"]).resolve()
+            src_path = resolve_source_path(reef, src["path"])
+            src_name = src.get("name", src_path.name)
         else:
-            src_path = Path(src).resolve()
+            src_path = resolve_source_path(reef, src)
             src_name = src_path.name
 
         if not src_path.is_dir():
@@ -1389,7 +1402,7 @@ def cmd_unknowns(args) -> None:
             data = json.loads(proj.read_text(encoding="utf-8"))
             for src in data.get("sources") or []:
                 if isinstance(src, dict) and src.get("name") and src.get("path"):
-                    source_roots[str(src["name"])] = str(src["path"])
+                    source_roots[str(src["name"])] = str(resolve_source_path(reef, src["path"]))
         except (OSError, json.JSONDecodeError):
             pass
 
@@ -2139,7 +2152,7 @@ def cmd_detect_new(args) -> None:
     results = []
 
     for source in project.get("sources", []):
-        repo_path = Path(source.get("path", source.get("local_path", "")))
+        repo_path = resolve_source_path(reef, source.get("path", source.get("local_path", "")))
         repo_name = repo_path.name
         if not repo_path.is_dir():
             continue
