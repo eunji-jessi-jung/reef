@@ -1331,6 +1331,41 @@ def _extract_entities_from_schema(schema_path: Path) -> list[dict]:
     return entities
 
 
+UNKNOWN_TOKEN_RE = re.compile(r"\bu:([0-9a-f]{8})\b")
+
+
+def unknown_uid(artifact_id: str, text: str) -> str:
+    """Stable 8-hex id for one unknown. Changes if the text is reworded, which is
+    correct: a reworded unknown is a different question and needs re-routing."""
+    h = hashlib.sha256(f"{artifact_id}\x00{text}".encode("utf-8"))
+    return h.hexdigest()[:8]
+
+
+def scan_deposit_file(path: Path) -> tuple[dict[str, str], bool]:
+    """Map unknown uid -> the entry heading that routes it.
+
+    Entries mark what they cover with `u:<uid>` tokens (see /reef:ask, 'Routes to').
+    Matching on tokens rather than on artifact ids is deliberate: an artifact id
+    appearing in prose, as a wikilink or in someone else's entry does not mean its
+    unknowns were asked about.
+    """
+    if not path.is_file():
+        return {}, False
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError:
+        return {}, False
+
+    routes: dict[str, str] = {}
+    heading = ""
+    for line in text.splitlines():
+        if line.startswith("## "):
+            heading = line[3:].strip()
+        for uid in UNKNOWN_TOKEN_RE.findall(line):
+            routes.setdefault(uid, heading or "(no heading)")
+    return routes, True
+
+
 def cmd_unknowns(args) -> None:
     """Harvest known_unknowns from every artifact — the deposit queue for the owner.
 
@@ -1345,18 +1380,25 @@ def cmd_unknowns(args) -> None:
     artifacts = collect_artifacts(reef)
 
     deposit_file = reef / ".reef" / "questions-for-owner.md"
-    deposit_text = ""
-    if deposit_file.is_file():
+    routes, deposit_exists = scan_deposit_file(deposit_file)
+
+    source_roots: dict[str, str] = {}
+    proj = reef / ".reef" / "project.json"
+    if proj.is_file():
         try:
-            deposit_text = deposit_file.read_text(encoding="utf-8")
-        except OSError:
-            deposit_text = ""
+            data = json.loads(proj.read_text(encoding="utf-8"))
+            for src in data.get("sources") or []:
+                if isinstance(src, dict) and src.get("name") and src.get("path"):
+                    source_roots[str(src["name"])] = str(src["path"])
+        except (OSError, json.JSONDecodeError):
+            pass
 
     entries: list[dict] = []
     silent: list[str] = []
-    by_domain: dict[str, int] = {}
-    by_type: dict[str, int] = {}
+    pending_by_domain: dict[str, int] = {}
+    pending_by_type: dict[str, int] = {}
     total_unknowns = 0
+    total_pending = 0
 
     for path, fm in artifacts:
         aid = str(fm.get("id", path.stem)).strip()
@@ -1372,9 +1414,26 @@ def cmd_unknowns(args) -> None:
 
         atype = str(fm.get("type") or "unknown")
         domain = str(fm.get("domain") or "")
-        total_unknowns += len(items)
-        by_domain[domain] = by_domain.get(domain, 0) + len(items)
-        by_type[atype] = by_type.get(atype, 0) + len(items)
+
+        unknowns = []
+        pending_here = 0
+        for text in items:
+            uid = unknown_uid(aid, text)
+            entry_heading = routes.get(uid)
+            if entry_heading is None:
+                pending_here += 1
+            unknowns.append({
+                "uid": uid,
+                "text": text,
+                "deposited": entry_heading is not None,
+                "deposited_in": entry_heading,
+            })
+
+        total_unknowns += len(unknowns)
+        total_pending += pending_here
+        if pending_here:
+            pending_by_domain[domain] = pending_by_domain.get(domain, 0) + pending_here
+            pending_by_type[atype] = pending_by_type.get(atype, 0) + pending_here
 
         srcs = sorted(
             str(s["ref"])
@@ -1389,27 +1448,37 @@ def cmd_unknowns(args) -> None:
             "domain": domain,
             "status": str(fm.get("status") or ""),
             "file": str(path.relative_to(reef)),
-            "deposited": bool(aid) and aid in deposit_text,
+            "last_verified": str(fm.get("last_verified") or ""),
+            "freshness_note": str(fm.get("freshness_note") or ""),
             "sources": srcs,
-            "unknowns": items,
+            "pending": pending_here,
+            "fully_deposited": pending_here == 0,
+            "unknowns": unknowns,
         })
 
     entries.sort(key=lambda e: e["id"])
     silent.sort()
-    pending = sum(1 for e in entries if not e["deposited"])
+
+    scoped = [e for e in entries if e["pending"]] if args.pending_only else entries
 
     emit({
         "reef": str(reef),
+        "scope": "pending-only" if args.pending_only else "all",
         "deposit_file": str(deposit_file.relative_to(reef)),
-        "deposit_file_exists": deposit_file.is_file(),
+        "deposit_file_exists": deposit_exists,
+        "routed_uids": len(routes),
+        "source_roots": dict(sorted(source_roots.items())),
         "total_artifacts": len(artifacts),
         "artifacts_with_unknowns": len(entries),
         "total_unknowns": total_unknowns,
-        "artifacts_pending_deposit": pending,
+        "pending_unknowns": total_pending,
+        "deposited_unknowns": total_unknowns - total_pending,
+        "artifacts_with_pending": sum(1 for e in entries if e["pending"]),
         "artifacts_claiming_no_unknowns": silent,
-        "by_domain": dict(sorted(by_domain.items())),
-        "by_type": dict(sorted(by_type.items())),
-        "artifacts": entries,
+        "no_unknowns_check": "complete",
+        "pending_by_domain": dict(sorted(pending_by_domain.items())),
+        "pending_by_type": dict(sorted(pending_by_type.items())),
+        "artifacts": scoped,
     })
 
 
@@ -2361,6 +2430,7 @@ def main() -> None:
     # unknowns
     p_unk = sub.add_parser("unknowns", help="Harvest known_unknowns across artifacts for /reef:ask")
     p_unk.add_argument("--reef", default=None, help="Path to reef root")
+    p_unk.add_argument("--pending-only", action="store_true", help="List only artifacts with unknowns not yet routed to a question")
     p_unk.set_defaults(func=cmd_unknowns)
 
     # log

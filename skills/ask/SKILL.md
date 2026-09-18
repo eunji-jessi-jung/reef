@@ -5,7 +5,7 @@ description: "Turn the reef's known_unknowns into a ranked question bank the own
 # /reef:ask
 
 Every artifact carries `known_unknowns`. They are the reef's honest gaps — the things
-the code could not settle. Until now they stayed where they were written: scattered
+the code could not settle. Left alone they stay where they were written: scattered
 across dozens of artifacts, one or two at a time, invisible as a body of work.
 
 This skill collects them, decides which ones a human actually has to answer, and
@@ -41,29 +41,62 @@ question, it is a complaint.
 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/reef.py unknowns --reef <reef-root>
 ```
 
-Returns every artifact's `known_unknowns` with its id, type, status, sources, file
-path, and whether that artifact already appears in the deposit file.
+Add `--pending-only` to skip artifacts whose unknowns are all routed already. Use it
+on any run after the first.
 
-Read `artifacts_claiming_no_unknowns`. Per methodology, an empty `known_unknowns` list
-that should have entries is worse than a long one. If artifacts appear there, name
-them in the wrap-up as candidates for review — do not silently treat them as complete.
+Each unknown comes back as an object, not a bare string:
 
-### 2. Resolve what you can before asking anyone
+```json
+{ "uid": "92479d03", "text": "...", "deposited": false, "deposited_in": null }
+```
+
+The `uid` is stable for as long as the text is unchanged, and it is how an entry in the
+bank claims an unknown (step 5). Reword an unknown and its uid changes — correctly, since
+a reworded question needs re-routing.
+
+Also in the output and worth reading before you start:
+
+- `source_roots` — where each source name resolves on disk. Use it; do not guess paths.
+- `last_verified` and `freshness_note` per artifact — how recently anyone checked.
+- `artifacts_claiming_no_unknowns` — artifacts declaring none at all. Per methodology, an
+  empty list that should have entries is worse than a long one. If this is non-empty, name
+  those artifacts in the wrap-up as review candidates. `no_unknowns_check: "complete"`
+  confirms the check ran, so an empty list means "none found", not "not implemented".
+
+**If the bank predates this mechanism**, `routed_uids` is 0 and everything reads as
+pending even though entries exist. Do not duplicate them. Read the bank first, and as you
+work, add the `Routes to` line (step 5) to the existing entries that already cover an
+unknown. The bank converges over a run or two.
+
+### 2. Triage every unknown before asking anyone
 
 **This is the gate that makes the bank worth opening.** An unknown that a careful read
-of the sources would settle is not an owner question; it is unfinished work.
+would settle is not an owner question; it is unfinished work.
 
-For each unknown, decide:
+Sort each into one of four buckets:
 
+- **Already asked** — an existing bank entry covers it. Add its uid to that entry's
+  `Routes to` line. Do not write a second entry. On a mature reef this is the most common
+  outcome, and it is a success, not a skip.
 - **Resolvable from sources** — grep, read, trace. If you find the answer, update the
-  artifact: move the fact into Key Facts with its citation and drop the unknown. Lint
-  and snapshot as usual. It never reaches the bank.
-- **Resolvable but expensive** — the answer is in the sources but would take a long
-  trace. Note the cost and keep going; `/reef:deep` is the right tool, not the owner.
+  artifact: move the fact into Key Facts with its citation and drop the unknown from
+  frontmatter. It never reaches the bank.
+- **Resolvable but expensive** — the answer is in the sources but needs a long trace.
+  `/reef:deep` is the right tool, not the owner. Record it in the bank's
+  `## Deferred to /reef:deep` section (step 5) with its uid and a one-line reason. This
+  is the only place deferrals are recorded; do not leave them implicit.
 - **Genuinely outside the sources** — runtime behaviour, history, intent, ownership,
   anything in a system the reef cannot see. **These become questions.**
 
-If you cannot tell which of the three a given unknown is, it is the first one. Go read.
+**When an unknown already documents its own search**, take it at its word. A mature reef's
+unknowns often name the greps that were run and what they returned ("no migration creates
+this table; a grep across all five repos returns only the INSERT"). Spot-check a sample of
+those rather than re-running every search — re-deriving 200 conclusions the text already
+states is not diligence, it is the slowest possible way to learn nothing. Re-run the search
+when the unknown is vague about what was checked, when `last_verified` is old, or when your
+spot-check finds the stated result wrong.
+
+Where an unknown says nothing about what was checked, go read. That is the default.
 
 ### 3. Cluster
 
@@ -72,7 +105,8 @@ time. `SCH-` asks whether a table exists, `PROC-` asks what happens when the wri
 fails, `RISK-` asks whether the exposure is real — one answer settles all three.
 
 Group unknowns that a single human answer would resolve. One cluster is one entry.
-Record every contributing artifact id so the answer can be routed back to all of them.
+Collect every member's uid; they go on the entry's `Routes to` line so the answer can be
+routed back to every artifact it settles.
 
 ### 4. Rank
 
@@ -86,12 +120,17 @@ Order the bank by what the answer unblocks, not by artifact order:
    would know, that question is cheap to route and should not sit at the bottom.
 4. **Everything else**, by cluster size.
 
+**The exclusion test is the inverse of rank 1.** If you cannot name a single artifact
+whose text would change when the answer arrives, the unknown does not go in the bank.
+Drop it and say how many you dropped in the report. A short bank that is all
+load-bearing beats a complete one nobody finishes.
+
 ### 5. Write the bank
 
-Write `.reef/questions-for-owner.md`. Every entry has exactly these four parts:
+Write `.reef/questions-for-owner.md`. Every entry has exactly these five parts:
 
 ```markdown
-## {ARTIFACT-ID or cluster label} — {the question as a single sentence}
+## {cluster label} — {the question as a single sentence}
 
 **Question.** One sentence, answerable. If there are genuinely two, number them — but
 two is the limit, and they must share an answer source.
@@ -106,46 +145,83 @@ optional. An entry without it is a complaint, not a question.
 
 **Files a human would need.** Where the answer lives, or — where it does not live in
 any source the reef can see — what artefact outside the reef would hold it.
+
+**Routes to.** The artifacts this answer updates, each with the uids it settles:
+`SYS-INVENTORY (u:92479d03, u:1f0ab5cc)`, `SCH-INVENTORY (u:77c31e40)`
+```
+
+End the file with one section for deferrals:
+
+```markdown
+## Deferred to /reef:deep
+
+Answerable from the sources, but only by a trace long enough to be its own task.
+Not owner questions.
+
+- `u:3ab90f12` PROC-ORDER-CANCEL — every caller of the outbox relay across two repos
 ```
 
 **Rules for the bank as a whole:**
 
+- **`Routes to` is mandatory and is the file's index.** `reef.py unknowns` reads those
+  uids to decide what is still pending. An entry without them is invisible to the next
+  run and will be written again by somebody.
 - **Idempotent.** On a re-run, keep entries that are still open, drop entries whose
-  unknown has since been resolved, and append new ones. Never rewrite the file from
-  scratch — an owner may have annotated it.
-- **No entry without "Already checked."** If you cannot fill it, you have not done
-  step 2 for that unknown.
-- **Absence is a finding, and it is stated as one.** "No `CREATE TABLE` exists in any
-  of the six migrations, and a grep across all five repos returns only the INSERT" is
-  the answer to *have you checked* — write it, do not summarise it as "not found".
-- **Do not invent the stakes.** If an unknown blocks nothing, it does not go in the
-  bank. A short bank that is all load-bearing beats a complete one nobody finishes.
+  unknowns have all disappeared from the frontmatter, and append new ones. **Never rewrite
+  the file from scratch** — an owner may have annotated it.
+- **New entries follow the five-part format; old entries are left as they are.** A bank
+  written before this format existed will use different labels. Do not restyle it — that
+  is a rewrite, and it destroys annotations. Add the `Routes to` line to an old entry when
+  you route an unknown to it, and leave the rest alone.
+- **No entry without "Already checked."**
+- **Absence is a finding, and it is stated as one.** "No `CREATE TABLE` exists in any of
+  the six migrations, and a grep across all five repos returns only the INSERT" is the
+  answer to *have you checked* — write it, do not summarise it as "not found".
 
 ### 6. Post-write
+
+If step 2 resolved unknowns and changed artifacts, snapshot **each changed artifact by
+id** — there is no reef-wide snapshot — then rebuild:
+
+```bash
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/reef.py snapshot <ARTIFACT-ID> --reef <reef-root>
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/reef.py lint --reef <reef-root>
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/reef.py rebuild-index --reef <reef-root>
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/reef.py rebuild-map --reef <reef-root>
+```
+
+Then log, whether or not artifacts changed:
 
 ```bash
 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/reef.py log "Owner question bank: N questions from M unknowns across K artifacts." --reef <reef-root>
 ```
 
-If step 2 resolved unknowns and changed artifacts, also run `lint`, `snapshot`,
-`rebuild-index` and `rebuild-map` as the other skills do.
+Lint must end at 0 errors.
 
 ### 7. Report
 
-```
-Question bank — N entries
+Report the numbers **for the scope you actually worked**, not the harvest header. If you
+ran `--pending-only` or worked a subset, say so on the first line.
 
-  Harvested     {total_unknowns} unknowns across {artifacts_with_unknowns} artifacts
-  Resolved      {X} from sources — artifacts updated, unknowns dropped
-  Deferred      {Y} to /reef:deep — answerable but expensive
-  Deposited     {N} questions for the owner
+```
+Question bank — N new entries (scope: {what you covered})
+
+  Harvested     {pending in scope} unknowns across {artifacts in scope} artifacts
+  Already asked {A} routed to existing entries
+  Resolved      {B} from sources — artifacts updated, unknowns dropped
+  Deferred      {C} to /reef:deep
+  Dropped       {D} blocking nothing
+  Deposited     {N} new questions
 
   Top of the bank:
     1. {question} — would settle {k} artifacts, could flip {ARTIFACT-ID}
     2. ...
 
-  Written to .reef/questions-for-owner.md
+  Bank is now {total} entries. Written to .reef/questions-for-owner.md
 ```
+
+The five middle numbers must account for every unknown in scope. If they do not sum,
+say which ones you could not classify rather than adjusting a number.
 
 Then say what it is for, once: the bank is what the owner reads when they have twenty
 minutes, and what the next `/reef:scuba` session uses as its agenda instead of starting
@@ -161,10 +237,9 @@ from a blank page.
 ## Key Rules
 
 - Never invent facts. An unknown is not a licence to speculate about the answer.
-- **Resolve before asking.** The owner's time is the scarcest input the reef has.
+- **Triage before asking.** The owner's time is the scarcest input the reef has.
 - One question per entry. A paragraph with four question marks gets answered zero times.
-- Route the answer back. Every entry names the artifacts that will be updated when the
-  answer arrives, so nothing is answered into a void.
+- Every entry routes. An answer with nowhere to land was not worth asking for.
 - The bank is a working document, not a report. Owners annotate it; respect that.
 
 ## Error Handling
