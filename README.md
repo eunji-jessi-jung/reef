@@ -121,6 +121,8 @@ Have architecture docs, design specs, or runbooks that aren't in the codebase? D
 
 **[supabase-reef](https://github.com/eunji-jessi-jung/supabase-reef)** — a complete reef covering 5 Supabase repos (Go, Elixir, TypeScript, React) built by a PM with zero Supabase knowledge. Includes a [benchmark report](https://github.com/eunji-jessi-jung/supabase-reef/blob/main/reef-benchmark-report.md) testing whether the reef actually helps AI agents (28 runs, 2 models, 7 tasks, with honest caveats).
 
+**[sellflow](https://github.com/eunji-jessi-jung/sellflow) + [sellflow-reef](https://github.com/eunji-jessi-jung/sellflow-reef)** — a fixture with a known answer, and the reef built over it. The fixture is a fictional company whose wiki, procedure and code all look authoritative and disagree; the brief has one correct answer and several of its load-bearing facts are absences. The reef is 80 artifacts, 532 recorded unknowns and 67 ranked questions for whoever owns the system, built with nobody available to ask — the case `/reef:ask` exists for. Clone them side by side to run `health`, `diff` and `update` on a reef someone else built, and read [ANSWER-KEY.md](https://github.com/eunji-jessi-jung/sellflow-reef/blob/main/ANSWER-KEY.md) to check the reef's claims against the fixture's own grading key.
+
 ## Author
 
 **Eunji Jung** — Product Manager building tools for AI-assisted software engineering.
