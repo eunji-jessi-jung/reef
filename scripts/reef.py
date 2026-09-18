@@ -384,6 +384,12 @@ def cmd_snapshot(args) -> None:
     if fm is None:
         fail(f"Cannot parse frontmatter for {artifact_id}")
 
+    # Canonical id comes from the artifact, not from how the caller typed it.
+    # Artifact ids are uppercase (see references/artifact-contract.md); a snapshot
+    # stored under a lowercase id matches no artifact, so `diff` silently stops
+    # covering it. The file is named in lowercase to match the artifact filename.
+    artifact_id = str(fm.get("id") or artifact_id).strip().upper()
+
     raw_sources = fm.get("sources", []) or []
     # sources can be strings or dicts with a "ref" field
     source_refs = []
@@ -402,16 +408,27 @@ def cmd_snapshot(args) -> None:
         if ":" in ref:
             src_name, rel_path = ref.split(":", 1)
         else:
-            # Try to find in any source
-            src_name = None
+            # Unqualified ref. Bind it only if exactly one source has that path.
+            #
+            # Taking the first match was wrong in a way that is hard to notice: a
+            # bare `requirements.txt` or `README.md` exists in several repos, so
+            # the snapshot would silently bind the artifact to another service's
+            # file and report that artifact as affected whenever the wrong repo
+            # changed. Ambiguity is recorded rather than guessed.
             rel_path = ref
-            for sn, sdata in source_index.get("sources", {}).items():
-                if rel_path in sdata.get("files", {}):
-                    src_name = sn
-                    break
-            if src_name is None:
-                snapshot_sources[ref] = {"hash": None, "modified": None}
+            matches = [
+                sn for sn, sdata in source_index.get("sources", {}).items()
+                if rel_path in sdata.get("files", {})
+            ]
+            if len(matches) != 1:
+                snapshot_sources[ref] = {
+                    "hash": None,
+                    "modified": None,
+                    "unresolved": "ambiguous" if matches else "not_found",
+                    "candidates": sorted(matches),
+                }
                 continue
+            src_name = matches[0]
 
         sources_data = source_index.get("sources", {})
         src_data = sources_data.get(src_name, {})
@@ -431,7 +448,12 @@ def cmd_snapshot(args) -> None:
         "sources": snapshot_sources,
     }
 
-    write_json(reef / ".reef" / "artifact-state" / f"{artifact_id}.json", snap)
+    state_dir = reef / ".reef" / "artifact-state"
+    # Drop any stale file for this artifact written under a different casing.
+    for existing in state_dir.glob("*.json"):
+        if existing.stem.upper() == artifact_id and existing.stem != artifact_id.lower():
+            existing.unlink()
+    write_json(state_dir / f"{artifact_id.lower()}.json", snap)
     emit({
         "status": "ok",
         "artifact_id": artifact_id,
@@ -455,7 +477,7 @@ def cmd_diff(args) -> None:
         for f in state_dir.iterdir():
             if f.suffix == ".json":
                 snap = read_json(f)
-                snapshots[snap["artifact_id"]] = snap
+                snapshots[str(snap["artifact_id"]).upper()] = snap
 
     # Build current file lookup: ref -> {hash, modified}
     current_files = {}  # "source:relpath" -> file entry
@@ -519,10 +541,50 @@ def cmd_diff(args) -> None:
                 source_stats[src_name] = {"new": 0, "updated": 0, "deleted": 0, "unchanged": 0}
             source_stats[src_name]["new"] += 1
 
+    # Expand through the source-artifact map.
+    #
+    # The comparison above can only see artifacts that have a snapshot, and
+    # artifacts are snapshotted when they are written, not when they are created
+    # — so a reef routinely has artifacts with no snapshot at all. Those are
+    # invisible to the hash comparison no matter how badly the change affects
+    # them. source-artifact-map.json knows which artifacts cite which file, so
+    # every artifact citing a file that changed is added here, whether or not it
+    # was ever snapshotted.
+    changed_refs = {
+        f"{d['source']}:{d['file']}" if d["source"] != "_unknown" else d["file"]
+        for d in details
+    }
+    art_map = {}
+    map_path = reef / ".reef" / "source-artifact-map.json"
+    if map_path.is_file():
+        loaded = read_json(map_path)
+        if isinstance(loaded, dict):
+            art_map = loaded
+
+    from_snapshot = set(affected_artifacts)
+    for ref in changed_refs:
+        for art_id in art_map.get(ref, []) or []:
+            affected_artifacts.add(str(art_id))
+    from_map_only = sorted(affected_artifacts - from_snapshot)
+
+    all_ids = {str(fm.get("id", path.stem)) for path, fm in collect_artifacts(reef)}
+    unsnapshotted = sorted(all_ids - set(snapshots))
+
     emit({
         "status": "ok",
         "sources": source_stats,
         "affected_artifacts": sorted(affected_artifacts),
+        "affected_via_map_only": from_map_only,
+        "changed_files": sorted(changed_refs),
+        "coverage": {
+            "artifacts": len(all_ids),
+            "with_snapshot": len(all_ids) - len(unsnapshotted),
+            "without_snapshot": len(unsnapshotted),
+            "unsnapshotted_artifacts": unsnapshotted,
+            "note": ("Artifacts without a snapshot cannot be compared by hash. They are "
+                     "covered here only through source-artifact-map.json, so run "
+                     "`snapshot <ARTIFACT-ID>` on them to get exact detection."),
+        },
         "details": details,
     })
 
@@ -569,7 +631,7 @@ def cmd_lint(args) -> None:
         for f in state_dir.iterdir():
             if f.suffix == ".json":
                 snap = read_json(f)
-                snapshots[snap["artifact_id"]] = snap
+                snapshots[str(snap["artifact_id"]).upper()] = snap
 
     # Build current files index
     current_files = {}
