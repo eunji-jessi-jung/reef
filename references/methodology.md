@@ -25,6 +25,23 @@ The AI reads code and produces structurally correct output. But it cannot know w
 
 Reef's value is not in replacing human judgment. It is in giving human judgment better material to work with.
 
+### When there is no human to ask
+
+The principle assumes a domain expert is available. Frequently one is not — the authors
+have left, the run is unattended, or the person at the keyboard arrived last week. The
+principle then inverts rather than lapses:
+
+> "The AI asked the questions. You answer the ones only you can."
+
+The agent resolves everything the sources can settle and records the rest as
+`known_unknowns`. `/reef:ask` collects those, drops the ones that were merely unfinished
+work, and deposits the remainder as a ranked question bank with the groundwork already
+done. The human's judgment still decides what matters — it just arrives later, and spends
+less time getting there.
+
+This is the same value proposition, not a weaker one: better material for human judgment,
+prepared in advance instead of extracted live.
+
 ---
 
 ## 3 Foundational Questions
@@ -32,8 +49,8 @@ Reef's value is not in replacing human judgment. It is in giving human judgment 
 Every design decision in Reef traces back to one of these:
 
 1. **How do you keep it from going stale?** Source snapshots, freshness tracking, freshness_triggers, /reef:update.
-2. **How do you know it is true?** Key Facts with source citations, known_unknowns for honest gaps, /reef:test for verification.
-3. **How does someone find what they need?** 8 typed artifacts, wikilinks for navigation, Obsidian graph view, index.md as the entry point.
+2. **How do you know it is true?** Key Facts with source citations, known_unknowns for honest gaps, /reef:test for verification, /reef:ask to route the gaps to someone who can close them.
+3. **How does someone find what they need?** 9 typed artifacts, wikilinks for navigation, Obsidian graph view, index.md as the entry point.
 
 ---
 
@@ -79,7 +96,7 @@ Every design decision in Reef traces back to one of these:
 | Phase | Human Effort | Typical Commands |
 |-------|-------------|------------------|
 | 1. Bootstrap | Heavy | /reef:init, /reef:snorkel |
-| 2. Expand | Mixed | /reef:scuba, /reef:deep |
+| 2. Expand | Mixed | /reef:scuba, /reef:deep, /reef:ask |
 | 3. Maintain | Light | /reef:update, /reef:health |
 | 4. Lint | None (automated) | Validation, freshness checks |
 

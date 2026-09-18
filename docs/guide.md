@@ -36,6 +36,19 @@ You answer questions one at a time. Reef writes and updates artifacts as knowled
 
 After scuba, your reef is useful. You don't need to "finish" it.
 
+**No one to ask?** Scuba assumes a domain expert is sitting with you. When nobody is —
+the authors left, you arrived last week, or you kicked the run off overnight — pick
+owner-absent mode, and finish with:
+
+```
+/reef:ask
+```
+
+Reef resolves every gap the sources can still settle, then writes the rest to
+`.reef/questions-for-owner.md` as a ranked question bank. Each entry says what the answer
+would unblock and what has already been checked, so whoever does know can answer in
+twenty minutes without redoing the search.
+
 ## What you can do with a reef
 
 - **Feed it to dev agents.** Point Claude Code, Cursor, or Copilot at the reef directory as context. Agents with reef artifacts understand your domain, not just your syntax.
@@ -52,6 +65,7 @@ Run `/reef:help` to see the full list anytime. Here's the overview:
 | Build | `/reef:init` | Scaffold + auto-discover |
 | Build | `/reef:scuba` | Deepen through Q&A |
 | Build | `/reef:deep` | Line-by-line tracing of critical areas |
+| Build | `/reef:ask` | Collect open gaps into a question bank for the owner |
 | Anytime | `/reef:artifact` | Explore a topic, capture knowledge, or refine an artifact |
 | Maintain | `/reef:update` | Pull latest code, detect changes, update artifacts |
 | Maintain | `/reef:health` | Coverage and freshness report |
@@ -78,6 +92,17 @@ You review and approve changes before anything gets written. Reports are persist
 ### `/reef:deep` — for critical systems
 
 Line-by-line code tracing with precise citations. Use after scuba for systems where getting details wrong has consequences: auth flows, data pipelines, billing logic.
+
+### `/reef:ask` — when the expert is missing
+
+Harvests `known_unknowns` from every artifact, resolves the ones that were merely
+unfinished work, clusters what is left, and ranks it by what each answer would unblock.
+Output is `.reef/questions-for-owner.md`.
+
+The four parts of every entry — the question, why it matters, what was already checked,
+and which files hold the answer — exist so the bank costs the owner reading time and
+nothing else. Run it after an unattended build, or before a walkthrough with whoever owns
+the system; it makes a better agenda than a blank page.
 
 ## Artifact types
 

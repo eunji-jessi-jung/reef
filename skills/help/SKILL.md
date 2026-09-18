@@ -23,6 +23,7 @@ reef skills:
     /reef:source      Extract full API specs and ERDs from source repos
     /reef:scuba       Deepen knowledge — automated analysis + Socratic Q&A
     /reef:deep        Exhaustive line-by-line tracing of specific areas
+    /reef:ask         Collect the reef's open gaps into a question bank for the owner
 
   Maintenance
     /reef:update      Pull sources, detect changes, generate update report for review
@@ -113,6 +114,7 @@ Your reef is active. Here's what you can do:
   /reef:deep      — Trace critical paths line by line
   /reef:health    — Check coverage and freshness (read-only)
   /reef:test      — Test whether the reef answers your real questions
+  /reef:ask       — Collect open gaps into a question bank for whoever owns the system
   /reef:help      — See all available skills
 ```
 

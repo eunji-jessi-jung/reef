@@ -8,6 +8,11 @@ Automated knowledge deepening. Builds an artifact generation manifest, then syst
 
 Core principle: "AI found the answers. I asked the questions."
 
+When no domain expert is available to ask — an unattended run, a system whose
+authors have left, a consultant on day one — the principle inverts rather than
+lapses: the agent asks the questions, and what it cannot resolve is deposited for
+the owner by `/reef:ask` instead of being dropped. See Mode 3 below.
+
 ## MANDATORY — Completion checklist
 
 You MUST complete these steps IN ORDER. Do NOT skip any. Do NOT jump ahead.
@@ -17,6 +22,9 @@ You MUST complete these steps IN ORDER. Do NOT skip any. Do NOT jump ahead.
 3. **Build the artifact generation manifest** (Step 2.5) — explicit list of every artifact to produce
 4. **Automated Deepening** (Step 3) — work through the manifest, NO user input needed
 5. **Briefing** (Step 4) — present manifest completion status, coverage gaps, next steps
+6. **Interactive review** — pick a mode. If no domain expert is available, take
+   owner-absent mode and close with `/reef:ask` so the unanswerable is deposited
+   rather than dropped.
 
 **CRITICAL: Automated deepening ALWAYS runs first.** Even if the user says "let's answer the questions" or "go through all of them" — this means: run the automated pass first, THEN present findings in the briefing. Do NOT ask the user questions until automated deepening is complete.
 
@@ -535,10 +543,18 @@ Now let's review what was generated and fill in the gaps.
   2. I'll investigate first — I'll trace answers in code, then show
      you batches of 3-5 findings for correction. Faster, but may
      miss domain context.
+  3. Nobody to ask right now — I'll resolve what the sources can
+     settle and deposit the rest as a question bank for whoever
+     owns this system. Nothing waits on you.
 ```
 
 Wait for the user to choose. Do NOT proceed without a selection.
 
+**If the user is not present at all** — an unattended or scheduled run, or the invocation
+said to run to completion without stopping — do not block on this prompt. Take Mode 3 and
+say so in the briefing.
+
+- **Option 3 → Owner-absent mode** (rules below). Use this whenever the person at the keyboard is not the domain expert, or nobody is at the keyboard at all.
 - **Option 1 → Human-guided mode** (rules below). **This is the recommended default for new reefs or after significant pipeline changes.**
 - **Option 2 → Self-guided mode**: For each question, read source code to find the answer yourself. Present each finding as: "Q: {question} — My finding: {answer with source citations}. Does this match your understanding?" The user reviews and corrects. This is faster but may miss domain context that isn't in code.
 
@@ -567,6 +583,31 @@ Wait for the user to choose. Do NOT proceed without a selection.
 5. **Write findings immediately** — same as human-guided mode. Update artifacts and question bank after each batch review, not at the end.
 6. **Create new artifacts the same way** as human-guided mode (propose, confirm, write, lint).
 7. **Post-write and pause rules** are the same as human-guided mode.
+
+### Owner-absent mode rules
+
+The reef still gets built. What changes is where the unanswerable goes: into a deposit
+queue instead of into a conversation.
+
+1. **Load the question agenda first** — same as the other modes. Read `.reef/questions.json`
+   for unanswered and partial questions.
+2. **Answer everything the sources can answer.** Read, grep, trace. This is the bulk of
+   the work and it is the same work self-guided mode does — the difference is that nobody
+   confirms it, so the citation carries the whole burden. Every fact lands with its source.
+3. **Never substitute a guess for the missing expert.** When the sources run out, the
+   answer is `known_unknowns`, phrased as what specifically could not be determined and
+   why. "Unclear" is not an entry; "no migration creates this table, and the only
+   reference is the INSERT that reads it" is.
+4. **Do not promote artifacts to `active` on your own authority.** Without user
+   confirmation they stay `draft`. Status is a claim about review, not about effort.
+5. **Write findings immediately** — same as the other modes.
+6. **Close by running `/reef:ask`.** It harvests the `known_unknowns` this pass produced,
+   resolves the ones that were merely unfinished, and writes the ranked bank to
+   `.reef/questions-for-owner.md`. A run that ends without this leaves its own gaps
+   scattered across eighty files, which is the state this mode exists to avoid.
+7. **Say what is provisional in the briefing.** Report the artifact count, the unknown
+   count, and the size of the question bank together. The third number is what tells the
+   reader how much of the reef is waiting on a human.
 
 ---
 

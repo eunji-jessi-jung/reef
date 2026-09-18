@@ -1331,6 +1331,88 @@ def _extract_entities_from_schema(schema_path: Path) -> list[dict]:
     return entities
 
 
+def cmd_unknowns(args) -> None:
+    """Harvest known_unknowns from every artifact — the deposit queue for the owner.
+
+    Deterministic and judgement-free. Which unknowns matter, how they cluster, and
+    what a human would need in order to answer them is /reef:ask's job, not this one.
+
+    Also reports artifacts that declare no unknowns at all. Per methodology.md, an
+    empty known_unknowns list that should have entries is worse than a long one, so
+    those ids are surfaced rather than silently counted as complete.
+    """
+    reef = find_reef_root(args.reef)
+    artifacts = collect_artifacts(reef)
+
+    deposit_file = reef / ".reef" / "questions-for-owner.md"
+    deposit_text = ""
+    if deposit_file.is_file():
+        try:
+            deposit_text = deposit_file.read_text(encoding="utf-8")
+        except OSError:
+            deposit_text = ""
+
+    entries: list[dict] = []
+    silent: list[str] = []
+    by_domain: dict[str, int] = {}
+    by_type: dict[str, int] = {}
+    total_unknowns = 0
+
+    for path, fm in artifacts:
+        aid = str(fm.get("id", path.stem)).strip()
+
+        raw = fm.get("known_unknowns") or []
+        if isinstance(raw, str):
+            raw = [raw]
+        items = [str(u).strip() for u in raw if str(u).strip()]
+
+        if not items:
+            silent.append(aid)
+            continue
+
+        atype = str(fm.get("type") or "unknown")
+        domain = str(fm.get("domain") or "")
+        total_unknowns += len(items)
+        by_domain[domain] = by_domain.get(domain, 0) + len(items)
+        by_type[atype] = by_type.get(atype, 0) + len(items)
+
+        srcs = sorted(
+            str(s["ref"])
+            for s in (fm.get("sources") or [])
+            if isinstance(s, dict) and s.get("ref")
+        )
+
+        entries.append({
+            "id": aid,
+            "type": atype,
+            "title": str(fm.get("title") or ""),
+            "domain": domain,
+            "status": str(fm.get("status") or ""),
+            "file": str(path.relative_to(reef)),
+            "deposited": bool(aid) and aid in deposit_text,
+            "sources": srcs,
+            "unknowns": items,
+        })
+
+    entries.sort(key=lambda e: e["id"])
+    silent.sort()
+    pending = sum(1 for e in entries if not e["deposited"])
+
+    emit({
+        "reef": str(reef),
+        "deposit_file": str(deposit_file.relative_to(reef)),
+        "deposit_file_exists": deposit_file.is_file(),
+        "total_artifacts": len(artifacts),
+        "artifacts_with_unknowns": len(entries),
+        "total_unknowns": total_unknowns,
+        "artifacts_pending_deposit": pending,
+        "artifacts_claiming_no_unknowns": silent,
+        "by_domain": dict(sorted(by_domain.items())),
+        "by_type": dict(sorted(by_type.items())),
+        "artifacts": entries,
+    })
+
+
 def cmd_manifest(args) -> None:
     """Generate scuba manifest skeleton from project.json + extracted sources."""
     reef = find_reef_root(args.reef)
@@ -2275,6 +2357,11 @@ def main() -> None:
     p_ictx = sub.add_parser("index-context", help="Index context and raw files, detect new/changed/unreferenced")
     p_ictx.add_argument("--reef", default=None, help="Path to reef root")
     p_ictx.set_defaults(func=cmd_index_context)
+
+    # unknowns
+    p_unk = sub.add_parser("unknowns", help="Harvest known_unknowns across artifacts for /reef:ask")
+    p_unk.add_argument("--reef", default=None, help="Path to reef root")
+    p_unk.set_defaults(func=cmd_unknowns)
 
     # log
     p_log = sub.add_parser("log", help="Append entry to evolution log")

@@ -47,6 +47,7 @@ Then, in any project directory:
 | `/reef:health` | Read-only validation and freshness report |
 | `/reef:feed` | Scan for new context files and connect them to the reef |
 | `/reef:test` | Test whether the reef answers your real questions |
+| `/reef:ask` | Collect the reef's open gaps into a ranked question bank for the owner |
 
 ## When to Use Each Depth
 
@@ -57,6 +58,8 @@ Then, in any project directory:
 **Scuba** — You have drafts, full API/ERD specs, and domain knowledge. The AI reads code and asks you things code alone can't answer: why decisions were made, who owns what, what breaks in practice. This is where most real knowledge gets captured.
 
 **Deep** — Critical systems where shallow reading misses real behavior. Line-by-line tracing, 5+ Key Facts per artifact with precise citations. Reserve for areas where getting it wrong has consequences.
+
+**Ask** — Whenever the reef was built without a domain expert on hand. Scuba's default posture assumes someone is beside you who already knows the answers. Often nobody is: the authors left, the run was unattended, or you arrived yesterday. `/reef:ask` resolves the gaps the sources can still settle, then deposits the rest as a ranked question bank — each entry saying what it would unblock and what was already checked, so the owner never repeats work the agent already did.
 
 ## I Built a Reef — Now What?
 
@@ -80,9 +83,13 @@ One reef covers one ecosystem — services that talk to each other. The sweet sp
 
 In a large org (hundreds of repos), the right unit is one reef per team or domain — not one reef for the whole org. A platform team's reef and a product team's reef are separate, each covering their own ecosystem.
 
-## The Question Bank
+## Two Question Banks
 
-Seed questions during `/reef:init`. These are the north star. `/reef:test` evaluates whether the reef actually answers them. A reef that answers 8 of 10 questions is useful. A reef with beautiful artifacts that answers 2 of 10 is decorative.
+Reef keeps questions in two places, and they run in opposite directions.
+
+**The discovery bank** (`.reef/questions.json`) — what you want the reef to answer. Seed questions during `/reef:init`. These are the north star. `/reef:test` evaluates whether the reef actually answers them. A reef that answers 8 of 10 questions is useful. A reef with beautiful artifacts that answers 2 of 10 is decorative.
+
+**The owner bank** (`.reef/questions-for-owner.md`) — what the reef needs a human to answer. Built by `/reef:ask` from the `known_unknowns` the artifacts accumulated. Ranked by what each answer unblocks, and every entry states what was already checked so the owner does not repeat it. This is the reef asking, rather than being asked.
 
 ## Keeping It Alive
 
