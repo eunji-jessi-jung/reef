@@ -14,6 +14,7 @@ import hashlib
 import json
 import os
 import re
+import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -33,6 +34,45 @@ SKIP_DIRS = {
     ".reef", ".env", "dist", "build", ".next", ".nuxt",
     "target", "vendor",
 }
+
+# Directory names that are environments however they are suffixed: `.venv`,
+# `.venv-3.12`, `venv_py311`, `.venv-confluence`. SKIP_DIRS matches exact names only,
+# which let a single `.venv-3.12` contribute ~20k files to one source.
+SKIP_DIR_PATTERN = re.compile(r"^\.?venv([-_.].*)?$|^site-packages$")
+
+
+def _skipped_component(rel: str) -> bool:
+    """True when any directory component of a relative path is a skipped directory."""
+    parts = rel.split("/")[:-1]
+    return any(p in SKIP_DIRS or SKIP_DIR_PATTERN.match(p) for p in parts)
+
+
+def iter_source_files(src_path: Path) -> list[str]:
+    """Relative paths of the files to index under src_path, sorted.
+
+    Inside a git work tree this is the set git knows about — tracked files plus
+    untracked files that are not ignored (`git ls-files --cached --others
+    --exclude-standard`). That drops worktrees, ignored bulk data and stray build
+    output without needing a separate exclude list. Environment directories are
+    filtered on top, because one that is neither tracked nor ignored would
+    otherwise slip through. Outside git, fall back to walking the tree.
+    Sorted so the committed index is stable between runs.
+    """
+    try:
+        out = subprocess.run(
+            ["git", "-C", str(src_path), "ls-files", "-z",
+             "--cached", "--others", "--exclude-standard"],
+            capture_output=True, timeout=120, check=True,
+        ).stdout.decode("utf-8", "surrogateescape")
+        rels = {r for r in out.split("\0") if r}
+    except (OSError, subprocess.SubprocessError):
+        rels = set()
+        for dirpath, dirnames, filenames in os.walk(src_path):
+            dirnames[:] = [d for d in dirnames
+                           if d not in SKIP_DIRS and not SKIP_DIR_PATTERN.match(d)]
+            for fname in filenames:
+                rels.add(str((Path(dirpath) / fname).relative_to(src_path)))
+    return sorted(r for r in rels if not _skipped_component(r))
 
 REQUIRED_FRONTMATTER_FIELDS = {
     "id", "type", "title", "domain", "status", "last_verified",
@@ -129,7 +169,8 @@ def write_json(path: Path, data) -> None:
 def is_binary(filepath: Path) -> bool:
     """Check first 8192 bytes for null bytes."""
     try:
-        chunk = filepath.read_bytes()[:8192]
+        with filepath.open("rb") as fh:
+            chunk = fh.read(8192)
         return b"\x00" in chunk
     except (OSError, PermissionError):
         return True
@@ -325,30 +366,20 @@ def cmd_index(args) -> None:
         skipped = 0
         files_map = {}
 
-        for dirpath, dirnames, filenames in os.walk(src_path):
-            # Prune skip dirs in-place
-            dirnames[:] = [d for d in dirnames if d not in SKIP_DIRS]
-
-            for fname in filenames:
-                fpath = Path(dirpath) / fname
-
-                if is_binary(fpath):
-                    skipped += 1
-                    continue
-
-                try:
-                    rel = fpath.relative_to(src_path)
-                    stat = fpath.stat()
-                    files_map[str(rel)] = {
-                        "hash": sha256_file(fpath),
-                        "size": stat.st_size,
-                        "modified": datetime.fromtimestamp(
-                            stat.st_mtime, tz=timezone.utc
-                        ).isoformat(),
-                    }
-                    files_indexed += 1
-                except Exception:
-                    skipped += 1
+        for rel in iter_source_files(src_path):
+            fpath = src_path / rel
+            # `--cached` lists files deleted from the work tree but still staged.
+            if not fpath.is_file() or is_binary(fpath):
+                skipped += 1
+                continue
+            try:
+                # Hash only. Size and mtime were stored but never read, and the
+                # mtime changed on every checkout, so the committed index churned
+                # even when no source content had.
+                files_map[rel] = {"hash": sha256_file(fpath)}
+                files_indexed += 1
+            except Exception:
+                skipped += 1
 
         index_data["sources"][src_name] = {
             "path": configured,
@@ -443,7 +474,7 @@ def cmd_snapshot(args) -> None:
         if file_entry:
             snapshot_sources[ref] = {
                 "hash": file_entry["hash"],
-                "modified": file_entry["modified"],
+                "modified": file_entry.get("modified"),
             }
         else:
             snapshot_sources[ref] = {"hash": None, "modified": None}
